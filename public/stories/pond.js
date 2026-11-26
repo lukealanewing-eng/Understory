@@ -160,12 +160,12 @@
     who: { lou: { name: 'Big Lou', pitch: 95 }, priya: { name: 'Priya', pitch: 640 }, rick: { name: 'Rick', pitch: 180 }, sal: { name: 'Old Sal', pitch: 110 } },
     state: () => ({ water: -1 }),
     rand(seed) { const r = mulberry(seed), ri = (n) => Math.floor(r() * n), a = ['red', 'yellow', 'blue', 'green']; for (let i = 3; i > 0; i--) { const j = ri(i + 1);[a[i], a[j]] = [a[j], a[i]]; } return { order: a, pump: ['2:00 a.m.', '2:30 a.m.', '3:00 a.m.', '3:15 a.m.'][ri(4)], ph: ['11.4', '11.8', '12.1'][ri(3)], spaces: [86, 112, 140][ri(3)], boss: ['Todd', 'Gary', 'corporate', 'Sheila'][ri(4)] }; },
-    env: { waterY: () => S ? S.water : -1, caustics: .55, spawn: (i) => [HUB[0] + i * 1.8 - 1.5, HUB[1] + 1.5], camYaw: 3.3, bound: { r: 94 }, edge: 'Past here it’s all cul-de-sacs. The story stays by the water.',
-      under: { fog: 0x3f6f5f, fd: .062, hemS: 0x9fe0c8, hemG: 0x2f4a3c, sun: .75, bloom: .9, grade: [.82, 1.02, .98] }, motes: { col: 0xfff3c8, size: .14, night: 0xd8ff7a }, umotes: { col: 0xcfe8d0, size: .09, op: .5, rise: .12 } },
+    env: { waterY: () => S ? S.water : -1, caustics: .55, spawn: (i) => [HUB[0] + i * 1.8 - 1.5, HUB[1] + 3], camYaw: 3.5, bound: { r: 94 }, edge: 'Past here it’s all cul-de-sacs. The story stays by the water.',
+      under: { fog: 0x3f6f5f, fd: .05, hemS: 0xb4f0d8, hemG: 0x3f5f4c, sun: .9, bloom: .9, grade: [.82, 1.02, .98] }, motes: { col: 0xfff3c8, size: .14, night: 0xd8ff7a }, umotes: { col: 0xcfe8d0, size: .09, op: .5, rise: .12 } },
     moods: {
       morning: { top: 0x7fb0c8, hor: 0xf3e2b8, sunC: 0xfff0c8, sunI: 1.1, hemS: 0xfff1d6, hemG: 0x6f7c44, hemI: .82, fog: 0xe6dcb6, fd: .0085, dir: [.5, .55, .4], cloud: .6, cl: 0xfff6e2, bloom: .5, grade: [1.02, 1, .96] },
       gold: { top: 0x6f9cc0, hor: 0xffd9a0, sunC: 0xffd49a, sunI: 1.2, hemS: 0xffe8cc, hemG: 0x6a7046, hemI: .8, fog: 0xf0cfa0, fd: .009, dir: [-.75, .32, .3], cloud: .5, cl: 0xffe6c4, bloom: .7, grade: [1.06, 1, .92] },
-      dusk: { top: 0x2a3566, hor: 0xe88a6a, sunC: 0xffa070, sunI: .7, hemS: 0x9a8fc0, hemG: 0x3a3e4a, hemI: .78, fog: 0x7a6a86, fd: .011, dir: [-.85, .12, .1], stars: .7, cloud: .45, cl: 0xc88a8a, bloom: .95, grade: [1.02, .98, 1.06], lamps: 1 },
+      dusk: { top: 0x2a3566, hor: 0xe88a6a, sunC: 0xffa070, sunI: .85, hemS: 0xaaa0d0, hemG: 0x4a4e5a, hemI: 1.0, fog: 0x7a6a86, fd: .011, dir: [-.85, .12, .1], stars: .7, cloud: .45, cl: 0xc88a8a, bloom: .95, grade: [1.02, .98, 1.06], lamps: 1 },
       clear: { top: 0x5aa0d0, hor: 0xfff0c8, sunC: 0xfff6d8, sunI: 1.25, hemS: 0xfff6e0, hemG: 0x74884a, hemI: .85, fog: 0xe8e6c8, fd: .007, dir: [.7, .5, -.3], cloud: .4, cl: 0xffffff, bloom: .6, grade: [1, 1.02, 1] }
     },
     moodFor: () => S.st >= 4 ? 'clear' : S.st === 3 ? 'dusk' : S.st === 2 ? 'gold' : 'morning',
@@ -238,7 +238,7 @@
         const q = rnd(), type = x < -30 && q < .35 ? 'pine' + (q < .2 ? 0 : 1) : q < .5 ? 'birch' + (q < .43 ? 0 : 1) : 'oak' + (q < .7 ? 0 : q < .85 ? 1 : 2), s = rr(1.5, 2.5); (groups[type] || (groups[type] = [])).push({ x, y: heightAt(x, z) - .2, z, s, sy: s * rr(.9, 1.15), ry: rnd() * TAU, c: [rr(.9, 1.08), rr(.9, 1.06), rr(.86, 1)] }); addCol(x, z, .35 * s); }
       for (const k in groups) inst(Tm[k], VMAT, groups[k]);
       /* the old willow at the hub */
-      { const [wx, wz] = [HUB[0] - 5, HUB[1] + 3], parts = [tinted(new THREE.CylinderGeometry(.5, .9, 5, 7, 2, true), mx(0, 2.5, 0, 1, 1, 1, 0, 0, .08), barkCol(0x5b4a38))]; for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; parts.push(tinted(new THREE.CylinderGeometry(.12, .3, 4, 5, 1, true), mx(Math.cos(a) * 1.3, 5.6, Math.sin(a) * 1.3, 1, 1, 1, Math.sin(a) * .7, 0, -Math.cos(a) * .7), barkCol(0x5b4a38))); }
+      { const [wx, wz] = [HUB[0] - 8, HUB[1] - 3], parts = [tinted(new THREE.CylinderGeometry(.5, .9, 5, 7, 2, true), mx(0, 2.5, 0, 1, 1, 1, 0, 0, .08), barkCol(0x5b4a38))]; for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; parts.push(tinted(new THREE.CylinderGeometry(.12, .3, 4, 5, 1, true), mx(Math.cos(a) * 1.3, 5.6, Math.sin(a) * 1.3, 1, 1, 1, Math.sin(a) * .7, 0, -Math.cos(a) * .7), barkCol(0x5b4a38))); }
         for (let i = 0; i < 9; i++) { const a = i * 2.4, r = i < 2 ? .8 : rr(2, 3.6); parts.push(tinted(poly(i * 3 + 100), mx(Math.cos(a) * r, rr(6.6, 8.4), Math.sin(a) * r, rr(2, 2.8), rr(1.3, 1.7), rr(2, 2.8)), leaf3(pick([0x86b45a, 0x9cc060, 0x74a652]), .14))); }
         for (let i = 0; i < 42; i++) { const a = rnd() * TAU, r = rr(2.6, 5.4), len = rr(3, 5.6); parts.push(tinted(new THREE.ConeGeometry(.28, len, 4, 1, true), mx(Math.cos(a) * r, 7.2 - len / 2, Math.sin(a) * r, 1, 1, 1, Math.PI, a, 0), leaf3(pick([0x9cc86a, 0xb4d072, 0x86b45a]), .2))); }
         const m = new THREE.Mesh(buildGeo(parts), VMAT); m.castShadow = m.receiveShadow = true; place(m, wx, wz, -.2); addCol(wx, wz, 1); beam(wx + 2, heightAt(wx, wz) + 9, wz + 2, .8, 3.2, 9, 0xfff2c0, .22, .25, -.3); beam(wx - 1, heightAt(wx, wz) + 9, wz + 4, .5, 2.4, 9, 0xfff2c0, .16, .4, .2); }
@@ -316,6 +316,7 @@
       /* culvert A (clean creek) and lawn drain B, so the east pipe isn't the only suspect */
       scene.add(mesh(GEO.tube, M(0x8d9794, { side: THREE.DoubleSide }), CULV[0] - 1, heightAt(CULV[0], CULV[1]) + .5, CULV[1], .8, 3.4, .8, 0, 0, Math.PI / 2), mesh(GEO.tube, M(0x3a5a3a, { side: THREE.DoubleSide }), DRAINB[0], heightAt(DRAINB[0], DRAINB[1]) + .2, DRAINB[1] + 1, .3, 2.4, .3, Math.PI / 2 - .2));
       ix({ id: 'culv', at: [CULV[0] + 1.5, CULV[1]], r: 3, label: 'Look', quiet: true, act: () => say([N("The old creek culvert. Clear water, cold, running the way it has since before the lots were numbered. Whatever is wrong with the pond, it isn't coming from here."), ME({ duck: "Noted. One suspect cleared. I do enjoy a process of elimination.", frog: "This one's clean. I licked it. Don't tell Mallory.", turtle: "Good water. Old water. If the pond ever fills again, this is who'll do it." })]) });
+      lamp(RISER[0], bedY + 5, RISER[1], 0xa8ffd8, 34, 30); lamp(RISER[0] + 5, -2, RISER[1] + 4, 0xa8ffd8, 20, 26);
       lamp(DOCK.x, 4, DOCK.z1, 0xffd9a0, 30, 22); lamp(-10, 6, 60, 0xffe2b0, 50, 34);
     }
   });

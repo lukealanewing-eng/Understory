@@ -623,11 +623,11 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
   if (started) { updatePlayer(dt, t); tickAvatars(dt, t); tickIX(dt, t); tickStations(dt, t); tickHUD(dt, t); if (LV.tick) LV.tick(dt, t); saveT += dt; if (saveT > 12 && !paused()) { saveT = 0; saveGame(); }
     sendT += dt; if (sendT > .1 && Net.on && !SPEC) { sendT = 0; Net.send({ t: 'p', x: +player.x.toFixed(2), z: +player.z.toFixed(2), y: +player.y.toFixed(2), w: +player.yaw.toFixed(2), p: +player.pitch.toFixed(2), m: +player.st.speed.toFixed(1), a: player.air ? 1 : 0, s: player.mode === 'float' ? 1 : player.mode === 'dive' ? 2 : 0 }); }
     perfT += dt; perfN++; if (perfT > 3) { const ms = perfT / perfN * 1000; perfT = perfN = 0; slowN = ms > 36 && t - startT > 8 && !paused() ? slowN + 1 : 0; if (slowN >= 2 && !window.__NOADAPT) { slowN = 0; if (QUAL > .55) { QUAL -= .15; if (QUAL < .8) { renderer.shadowMap.enabled = false; sun.castShadow = false; } resize(); } } } }
-  else { cam.yaw += dt * .08; const c = player.c; player.g.position.set(player.x, player.y, player.z); c.g.rotation.y = cam.yaw + 2.6; c.anim(dt, t, { speed: 0, swim: player.mode === 'float', dive: player.mode === 'dive', off: 1 }); }
+  else { cam.yaw += dt * .05; const c = player.c; player.g.position.set(player.x, player.y, player.z); c.g.rotation.y = cam.yaw + .45; c.anim(dt, t, { speed: 0, swim: player.mode === 'float', dive: player.mode === 'dive', off: 1 }); }
   updateNPCs(dt, t); updateCam(dt); tickMood(dt); applyEnv(dt, t); for (const f of WORLD.anim) f(dt, t); tickFx(dt, t); dlgTick(dt); tickBubble(dt); renderFrame(); }
 function boot() {
   for (const k of LV.order) WHO[k] = { name: LV.chars[k].name, pitch: LV.chars[k].pitch }; Object.assign(WHO, LV.who || {}); document.title = `${LV.title} · Understory`;
-  S = freshState(7); R = LV.rand ? LV.rand(S.seed) : {}; MY.char = LV.order[0]; initRenderer(); initFx(); LV.build(); setMood(Object.keys(LV.moods)[0], true); makePlayer(MY.char); const sp = LV.env.spawn(0); placePlayer(sp[0], sp[1], sp[2]); player.mode = LV.env.sea ? 'dive' : 'land'; started = true; syncWorld(); started = false; initInput(); initTitle();
+  S = freshState(7); R = LV.rand ? LV.rand(S.seed) : {}; MY.char = LV.order[0]; initRenderer(); initFx(); LV.build(); setMood(Object.keys(LV.moods)[0], true); makePlayer(MY.char); const sp = LV.env.spawn(0); placePlayer(sp[0], sp[1], sp[2]); player.mode = LV.env.sea ? 'dive' : 'land'; cam.yaw = (LV.env.camYaw || .5) - .5; started = true; syncWorld(); started = false; initInput(); initTitle();
   addEventListener('visibilitychange', () => { if (document.hidden && started) saveGame(); }); window.ready = 1; requestAnimationFrame(loop);
   const j = QS.get('join'); if (j) openTogether(j);
 }
