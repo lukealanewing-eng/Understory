@@ -1,0 +1,9 @@
+[build]
+  publish = "public"
+
+# The server only handles the multiplayer relay; everything else is the static game.
+[server]
+  path = "/ws"
+
+[dev]
+  publish = "public"
