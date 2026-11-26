@@ -234,7 +234,7 @@ function initPost() {
   const fin = sm(`uniform sampler2D tD,tB; uniform float bloom,wob,time; uniform vec3 grade; varying vec2 vUv;
     float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
     void main(){ vec2 uv=vUv; uv+=vec2(sin(uv.y*23.+time*1.7),cos(uv.x*19.+time*1.3))*wob;
-      vec3 c=texture2D(tD,uv).rgb; vec3 b=texture2D(tB,uv).rgb; c+=b*bloom; c=mix(c,c*c*(3.-2.*c),.22); c*=grade;
+      vec3 c=texture2D(tD,uv).rgb; vec3 b=texture2D(tB,uv).rgb; c+=b*bloom; c=clamp(c,0.,1.); c=mix(c,c*c*(3.-2.*c),.22); c*=grade;
       vec2 q=vUv-.5; c*=1.-dot(q,q)*.62; c+=(h21(vUv*vec2(913.,517.)+fract(time))-.5)*.022; gl_FragColor=vec4(c,1.); }`, u);
   POST = { quad, oc, u, bright, blur, bu, fin, rt: null, a: null, b: null };
 }

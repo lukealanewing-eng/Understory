@@ -213,6 +213,8 @@
     },
     onStage(v) { if (v === 3) sfx.ok(); },
     sync() {
+      /* a stage never depends on someone finishing a conversation */
+      if (flag('solved') && S.st < 2) stage(2); if (flag('seen') && S.st < 3) stage(3); if (flag('shut') && S.st < 4) stage(4);
       const shut = flag('shut'); if (hose) hose.material = M(shut ? 0x4a4a4a : 0x2f2f33); if (pumpLed) pumpLed.material.color.setHex(shut ? 0x444444 : 0xff3a2a); if (signNew) signNew.visible = flag('done');
       wheelM.forEach((w) => w.rotation.z = shut ? .8 : 0); if (priya && flag('seen') && Math.hypot(priya.g.position.x - VIEW[0], priya.g.position.z - VIEW[1]) > 8 && !priya.goto) npcMove(priya, VIEW[0], VIEW[1]);
     },
