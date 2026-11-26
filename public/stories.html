@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Understory">
+<meta name="theme-color" content="#131c17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>Understory · Field Notes</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&amp;family=Figtree:wght@400;600;700&amp;display=swap" rel="stylesheet">
 <link href="stories/ui.css" rel="stylesheet">
@@ -14,6 +21,10 @@
 #lvls a{flex:1 1 auto;text-align:center;text-decoration:none;color:var(--paper);background:rgba(19,28,23,.55);border:1.5px solid rgba(240,230,207,.25);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:700;white-space:nowrap}
 #lvls a.on{background:var(--flag);color:#1b0e06;border-color:transparent}
 #btnDown{right:92px;bottom:78px;width:54px;height:54px}
+#btnMenu{right:64px}
+#obj{margin-right:118px}
+.menu{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.menu .btn{width:100%;text-decoration:none}
 #pad{height:200px}
 .wheel{width:74px;height:74px;border-radius:50%;border:6px solid #48524f;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;position:relative;transition:transform .4s}
 .wheel.done{opacity:.45;transform:rotate(180deg)}
@@ -39,6 +50,7 @@
       <button id="netChip" class="hide"></button>
       <div id="toasts"></div>
     </div>
+    <button id="btnMenu" class="rb" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="#f0e6cf" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
     <button id="btnJournal" class="rb" aria-label="Journal"><svg viewBox="0 0 24 24" fill="none" stroke="#f0e6cf" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M9 9h6M9 13h6"/></svg><span class="pip"></span></button>
     <div id="bubble"></div>
     <div id="stick"><i></i></div>

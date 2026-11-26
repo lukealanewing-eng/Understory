@@ -413,6 +413,16 @@ function openJournal(tab) { if (!started) return; if (tab) jTab = tab; $('#btnJo
   else h += LV.order.map(k => { const c = LV.chars[k], pl = playerOf(k); return `<div class="item"><div class="ic">${c.name[0]}</div><div><b>${c.name}${k === MY.char && !SPEC ? ' (you)' : pl ? ` (${esc(pl.name)})` : ''}</b><span>${c.role}. ${c.blurb}</span></div></div>`; }).join('') + '<p class="sub">Anyone not being played tags along and does their part when asked.</p>';
   openSheet(h); $('#sheetCard').querySelectorAll('.tabs button').forEach(b => b.onclick = () => openJournal(b.dataset.t)); }
 
+/* the pause menu: the way back to the title, to another character, or to another story */
+function openMenu() { if (!started) return; const full = !!(document.fullscreenElement || document.webkitFullscreenElement), canFull = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  openSheet(`<h2>${LV.title}</h2><p class="sub">${Net.on ? `You’re in room ${Net.code}. Leaving won’t end it for the others unless you’re the host.` : 'Your place is saved on this device. “Continue” on the title screen picks it up again.'}</p><div class="menu">
+    <button class="btn go" id="mnBack">Keep playing</button><button class="btn" id="mnTitle">Title screen: change character</button>
+    ${LEVELS.filter(l => l.id !== LV.id).map(l => `<a class="btn" href="?lv=${l.id}" data-lv="1">Play “${l.title}”</a>`).join('')}<a class="btn" href="index.html" data-lv="1">Play “Hollow Creek”</a>
+    ${canFull ? `<button class="btn" id="mnFull">${full ? 'Leave full screen' : 'Full screen'}</button>` : ''}<button class="btn sndBtn" id="mnSnd"><span>${PREF.mute ? 'Sound off' : 'Sound on'}</span></button></div>
+    <p class="sub">On an iPhone, the browser’s bars can only be hidden by adding the game to your Home Screen: Share, then “Add to Home Screen”.</p>`);
+  $('#mnBack').onclick = () => closeSheet(); $('#mnTitle').onclick = resetToTitle; $('#mnSnd').onclick = () => { setMute(!PREF.mute); syncSoundBtn(); };
+  $('#sheetCard').querySelectorAll('a[data-lv]').forEach(a => a.addEventListener('click', () => { saveGame(); Net.close(); }));
+  const f = $('#mnFull'); if (f) f.onclick = () => { try { if (full) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else { const el = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } } catch (e) { } closeSheet(); }; }
 /* ---------------- input ---------------- */
 const IN = { mx: 0, my: 0, jump: false, up: false, down: false, look: null, stick: null, keys: {}, lastLook: 0, moved: false };
 function syncSoundBtn() { document.querySelectorAll('.sndBtn').forEach(b => { b.classList.toggle('off', !!PREF.mute); const t = b.querySelector('span'); if (t) t.textContent = PREF.mute ? 'Sound off' : 'Sound on'; }); }
@@ -436,11 +446,11 @@ function initInput() {
   addEventListener('blur', resetTouch); document.addEventListener('visibilitychange', resetTouch);
   $('#dlg').addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; e.preventDefault(); dlgTap(); });
   document.addEventListener('contextmenu', (e) => e.preventDefault()); document.addEventListener('gesturestart', (e) => e.preventDefault());
-  addEventListener('keydown', (e) => { if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return; const first = !IN.keys[e.code]; IN.keys[e.code] = true; if (e.code === 'Space') { e.preventDefault(); if (Dlg.on) dlgTap(); else if (first) IN.jump = true; } if (e.code === 'KeyE' || e.code === 'Enter') { if (Dlg.on) dlgTap(); else doAct(); } if (e.code === 'KeyQ') doSense(); if (e.code === 'KeyJ') openJournal(); if (e.code === 'Escape') closeSheet(); if (!IN.moved && /Key[WASD]|Arrow/.test(e.code)) { IN.moved = true; $('#hint').classList.add('hide'); } });
+  addEventListener('keydown', (e) => { if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return; const first = !IN.keys[e.code]; IN.keys[e.code] = true; if (e.code === 'Space') { e.preventDefault(); if (Dlg.on) dlgTap(); else if (first) IN.jump = true; } if (e.code === 'KeyE' || e.code === 'Enter') { if (Dlg.on) dlgTap(); else doAct(); } if (e.code === 'KeyQ') doSense(); if (e.code === 'KeyJ') openJournal(); if (e.code === 'Escape') { if (sheetOpen) closeSheet(); else if (!paused()) openMenu(); } if (!IN.moved && /Key[WASD]|Arrow/.test(e.code)) { IN.moved = true; $('#hint').classList.add('hide'); } });
   addEventListener('keyup', (e) => { IN.keys[e.code] = false; });
   const press = (id, fn, up) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { b.setPointerCapture(e.pointerId); } catch (_) { } fn(); }); if (up) for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up); };
   press('#btnJump', () => { IN.jump = true; IN.up = true; }, () => { IN.up = false; }); press('#btnDown', () => { IN.down = true; }, () => { IN.down = false; }); press('#btnSniff', () => doSense()); press('#btnAct', () => doAct());
-  $('#btnJournal').onclick = () => openJournal(); $('#obj').onclick = () => openJournal('tasks');
+  $('#btnJournal').onclick = () => openJournal(); $('#btnMenu').onclick = () => openMenu(); $('#obj').onclick = () => openJournal('tasks');
   document.querySelectorAll('.sndBtn').forEach(b => b.onclick = (e) => { e.stopPropagation(); setMute(!PREF.mute); syncSoundBtn(); }); syncSoundBtn();
 }
 function keyMove() { const k = IN.keys; return [(k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0), (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0)]; }
@@ -530,7 +540,7 @@ function remoteOp(o, by) { if (!applyOp(o)) return; onOp(o, false, by); }
 function onOp(o, local, by) {
   if (!started) return; syncWorld(); if (o.t === 'h') return;
   if (o.t === 's' && o.k === 'st') { setMood(LV.moodFor ? LV.moodFor() : Object.keys(LV.moods)[0]); if (LV.onStage) LV.onStage(o.v, local); }
-  if (o.t === 'f' && o.k === 'done') { PREF.done = PREF.done || {}; PREF.done[LV.id] = 1; savePrefs(); }
+  if (o.t === 'f' && o.k === 'done') { PREF.done = PREF.done || {}; PREF.done[LV.id] = 1; savePrefs(); setTimeout(() => toast('That’s the story. Keep exploring, or tap the <b>menu</b> (top right) to play it as someone else or try another one.', 12000), 9000); }
   if (LV.onOp) LV.onOp(o, local, by);
   if (!local) { const who = `<b>${esc(by || 'Someone')}</b>`; let m = null;
     if (o.t === 'a') { if (o.l === 'clues') m = `${who} found a clue: ${LV.CLUES[o.v][0]}`; else if (o.l === 'inv') m = `${who} got: ${LV.ITEMS[o.v][0]}`; else if (o.l === 'disc') m = `${who} found: ${LV.DISC[o.v][0]}`; }
@@ -611,8 +621,9 @@ function loadSaves() { try { return JSON.parse(localStorage.getItem(SAVE_KEY) ||
 function saveGame() { if (!started || SPEC || !S) return; if (Net.on && !Net.isHost) return; const a = loadSaves(); a[LV.id] = { S, char: MY.char, x: +player.x.toFixed(1), y: +player.y.toFixed(1), z: +player.z.toFixed(1), t: Date.now(), mp: Net.on ? Net.code : '' }; try { localStorage.setItem(SAVE_KEY, JSON.stringify(a)); } catch (e) { } }
 
 /* ---------------- boot ---------------- */
+function goFull() { try { const el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen; if (f && !document.fullscreenElement && !document.webkitFullscreenElement && matchMedia('(pointer: coarse)').matches) { const p = f.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { }); } } catch (e) { } }
 function beginGame(o) { /* o: { S, char, x, y, z, spec, isNew } */
-  audioUnlock(); S = o.S; R = LV.rand ? LV.rand(S.seed) : {}; SPEC = !!o.spec; MY.char = o.char || MY.char; for (const id in STN) STN[id].mine = false;
+  goFull(); audioUnlock(); S = o.S; R = LV.rand ? LV.rand(S.seed) : {}; SPEC = !!o.spec; MY.char = o.char || MY.char; for (const id in STN) STN[id].mine = false;
   $('#title').classList.add('hide'); closeSheet(true); makePlayer(MY.char); const sp = LV.env.spawn(Net.on ? Net.index() : 0); if (o.x === undefined) placePlayer(sp[0], sp[1], sp[2]); else placePlayer(o.x, o.z, o.y); cam.yaw = LV.env.camYaw || .5; cam.pitch = .24; setMood(LV.moodFor ? LV.moodFor() : Object.keys(LV.moods)[0], true); started = true; startT = performance.now() / 1000; syncWorld();
   document.body.classList.toggle('spec', SPEC); const se = CH().sense; $('#btnSniff').innerHTML = se.icon || SENSE_ICON; $('#btnSniff').setAttribute('aria-label', se.name);
   netChip(); if (o.isNew && !SPEC) showCards(LV.cards.intro, () => { toast(`You are <b>${CH().name}</b>, ${CH().role.toLowerCase()}. Tap the round button to <b>${se.name.toLowerCase()}</b>.`, 8000); if (CH().tip) toast(CH().tip, 9000); if (LV.onBegin) LV.onBegin(); }); else { $('#hud').classList.remove('hide'); } saveGame(); }

@@ -1,0 +1,2 @@
+{ "name": "Understory", "short_name": "Understory", "start_url": "/", "scope": "/", "display": "fullscreen", "orientation": "any", "background_color": "#131c17", "theme_color": "#131c17",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }] }
