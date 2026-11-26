@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Understory · Field Notes</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&amp;family=Figtree:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<link href="stories/ui.css" rel="stylesheet">
+<style>
+/* additions for the anthology levels */
+#grain{display:none}
+#title h1{font-size:clamp(44px,13vw,84px)}
+#lvls{display:flex;gap:6px;flex-wrap:wrap;max-width:520px;width:100%;margin:0 auto 10px}
+#lvls a{flex:1 1 auto;text-align:center;text-decoration:none;color:var(--paper);background:rgba(19,28,23,.55);border:1.5px solid rgba(240,230,207,.25);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:700;white-space:nowrap}
+#lvls a.on{background:var(--flag);color:#1b0e06;border-color:transparent}
+#btnDown{right:92px;bottom:78px;width:54px;height:54px}
+#pad{height:200px}
+.wheel{width:74px;height:74px;border-radius:50%;border:6px solid #48524f;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;position:relative;transition:transform .4s}
+.wheel.done{opacity:.45;transform:rotate(180deg)}
+.wheels{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:16px 0}
+.pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.pick button{background:var(--ink);color:var(--paper);border-radius:12px;padding:10px;min-height:48px;font-size:13.5px;text-align:left;line-height:1.25}
+.pick button.sel{background:#8b3a12}
+.grid{display:grid;gap:4px;margin:12px auto;touch-action:none}
+.grid button{aspect-ratio:1;border-radius:8px;background:rgba(19,28,23,.12);font-size:18px;font-weight:700}
+.grid button.on{background:var(--ink);color:var(--paper)}
+.mono{font-family:ui-monospace,Menlo,monospace;background:rgba(19,28,23,.08);border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.5;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="hud" class="hide">
+    <div id="topL">
+      <button id="obj" aria-label="Current objective. Opens the journal.">
+        <span id="objArrow"><svg viewBox="0 0 24 24"><path d="M12 2 L19 20 L12 16 L5 20 Z" fill="#ff6a2b"/></svg></span>
+        <span id="objTxt"><span id="objCh"></span><br><span id="objLine">…</span><span id="objDist"></span></span>
+      </button>
+      <button id="netChip" class="hide"></button>
+      <div id="toasts"></div>
+    </div>
+    <button id="btnJournal" class="rb" aria-label="Journal"><svg viewBox="0 0 24 24" fill="none" stroke="#f0e6cf" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M9 9h6M9 13h6"/></svg><span class="pip"></span></button>
+    <div id="bubble"></div>
+    <div id="stick"><i></i></div>
+    <div id="hint">Drag here to move.<br>Drag anywhere else to look.</div>
+    <div id="pad">
+      <button id="btnAct" class="hide">Talk</button>
+      <button id="btnDown" class="hide" aria-label="Dive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M6 13l6 6 6-6"/></svg></button>
+      <button id="btnSniff" aria-label="Sense"></button>
+      <button id="btnJump" aria-label="Jump or swim up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 11l6-6 6 6"/></svg></button>
+    </div>
+  </div>
+  <div id="dlg" class="hide"><div id="dlgBox"><div id="dlgName"></div><div id="dlgTxt"></div><div id="dlgCh"></div><div id="dlgNext">tap</div></div></div>
+  <div id="sheet" class="sheet hide"><div class="card" id="sheetCard"></div></div>
+  <div id="title">
+    <div>
+      <h1><span id="tKick">Understory · Field Notes</span><i id="tName" style="font-style:italic"></i></h1>
+      <p class="tag" id="tTag"></p>
+      <button id="titleSnd" class="sndBtn"><svg viewBox="0 0 24 24" fill="none" stroke="#f0e6cf" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="w" d="M16.5 8.5a5 5 0 010 7M19 6a8.500 8.500 0 010 12"/><path class="x" d="M17 9l5 6M22 9l-5 6"/></svg><span>Sound on</span></button>
+    </div>
+    <div>
+      <div id="lvls"></div>
+      <div id="chars"></div>
+      <div class="row">
+        <button class="btn go" id="btnStart">Play alone</button>
+        <button class="btn ghost hide" id="btnCont">Continue</button>
+        <button class="btn ghost" id="btnTogether">Play together</button>
+      </div>
+    </div>
+  </div>
+  <div id="chap" class="hide"></div>
+  <div id="fade"></div>
+</div>
+<script src="three.min.js"></script>
+<script src="stories/critters.js"></script>
+<script src="stories/engine.js"></script>
+<script>
+(function () { const ids = LEVELS.map(l => l.id), lv = ids.includes(QS.get('lv')) ? QS.get('lv') : ids[0], s = document.createElement('script'); s.src = 'stories/' + lv + '.js'; s.onload = () => boot(); document.body.appendChild(s); })();
+</script>
+</body>
+</html>
