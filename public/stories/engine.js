@@ -156,7 +156,7 @@ function addPlat(p) { PLAT.push(p); return p; }
 function floorAt(x, z, y, who) { let h = heightAt(x, z); for (const p of PLAT) { if (p.on === false || (p.only && !p.only.includes(who || MY.char))) continue; const inside = p.r ? Math.hypot(x - p.x, z - p.z) < p.r : (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1); if (inside && p.y > h && y >= p.y - (p.step || .55)) h = p.y; } return h; }
 
 /* ---------------- renderer, sky, moods, light, and the finishing pass ---------------- */
-let scene, camera, renderer, sun, hemi, skyMesh, skyU, QUAL = 1, UW = 0, POST = null;
+let scene, camera, renderer, sun, sunFill, hemi, skyMesh, skyU, QUAL = 1, UW = 0, POST = null;
 const WORLD = { anim: [] };
 const CAUS = { value: new THREE.Vector4(0, -1e6, 0, .22) };  /* time, water level, strength, fade with depth */
 /* any lambert material can carry caustic light: rippling sun below the water line */
@@ -190,7 +190,7 @@ function applyEnv(dt, t) {
   const m = moodNow, u = LV.env.under, k = u ? UW : 0, uc = (key) => u && u[key] !== undefined ? mix3(m[key], hex(u[key]), k) : m[key];
   skyU.top.value.setRGB(...m.top); skyU.hor.value.setRGB(...m.hor); skyU.sunC.value.setRGB(...m.sunC); skyU.cl.value.setRGB(...m.cl); skyU.stars.value = m.stars; skyU.cloud.value = m.cloud; skyU.time.value = t; skyU.sunDir.value.set(...m.dir).normalize();
   const fog = uc('fog'); scene.fog.color.setRGB(...fog); scene.fog.density = u ? lerp(m.fd, u.fd, k) : m.fd; skyMesh.visible = !LV.env.sea && k < .5; scene.background = skyMesh.visible ? null : scene.fog.color;
-  sun.color.setRGB(...m.sunC); sun.intensity = m.sunI * 2.5 * (u ? lerp(1, u.sun === undefined ? .6 : u.sun, k) : 1); sun.target.position.set(player.x, player.y, player.z); sun.position.copy(skyU.sunDir.value).multiplyScalar(90).add(sun.target.position);
+  sun.color.setRGB(...m.sunC); sun.intensity = m.sunI * 2.5 * (u ? lerp(1, u.sun === undefined ? .6 : u.sun, k) : 1); sun.target.position.set(player.x, player.y, player.z); sun.position.copy(skyU.sunDir.value).multiplyScalar(90).add(sun.target.position); { const k = renderer.shadowMap.enabled && sun.castShadow ? (LV.env.shadowK || .6) : 1, I = sun.intensity; sun.intensity = I * k; sunFill.intensity = I * (1 - k); sunFill.color.copy(sun.color); sunFill.position.copy(sun.position); }
   hemi.color.setRGB(...uc('hemS')); hemi.groundColor.setRGB(...uc('hemG')); hemi.intensity = m.hemI * 1.35;
   if (WORLD.waterU) { const w = WORLD.waterU; w.time.value = t; w.sky.value.setRGB(...m.hor); w.sunC.value.setRGB(...m.sunC); w.fogC.value.copy(scene.fog.color); w.fd.value = scene.fog.density; w.night.value = m.stars; }
   CAUS.value.x = t; CAUS.value.y = waterY(); CAUS.value.z = LV.env.caustics ? LV.env.caustics * m.sunI * (.35 + .65 * k) : 0;
@@ -204,7 +204,7 @@ function initRenderer() {
   scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0xeed6a8, .009);
   camera = new THREE.PerspectiveCamera(58, 1, .25, 1700);
   hemi = new THREE.HemisphereLight(0xffffff, 0x556644, .8); scene.add(hemi);
-  sun = new THREE.DirectionalLight(0xffffff, 1); sun.castShadow = LV.env.shadows !== false; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 1, far: 220 }); sun.shadow.bias = -.0007; sun.shadow.normalBias = .05; scene.add(sun); scene.add(sun.target);
+  sun = new THREE.DirectionalLight(0xffffff, 1); sun.castShadow = LV.env.shadows !== false; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 1, far: 220 }); sun.shadow.bias = -.0007; sun.shadow.normalBias = .05; scene.add(sun); scene.add(sun.target); sunFill = new THREE.DirectionalLight(0xffffff, 0); sunFill.target = sun.target; scene.add(sunFill);
   VMAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); if (LV.env.caustics) causticize(VMAT);
   GEO.box = new THREE.BoxGeometry(1, 1, 1); GEO.cyl = new THREE.CylinderGeometry(1, 1, 1, 10); GEO.sph = new THREE.IcosahedronGeometry(1, 1); GEO.cone = new THREE.ConeGeometry(1, 1, 7); GEO.ball = Critter.SPH; GEO.tube = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true);
   skyU = { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunC: { value: new THREE.Color() }, cl: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, cloud: { value: .5 }, time: { value: 0 } };

@@ -47,7 +47,7 @@ const Critter = (() => {
   function quad(o) {
     const c = rig(o.h), L = o.L || .62, R = o.R || .3, leg = o.leg || .3, lr = o.legR || .085, H = o.head || .33, neck = o.neck || 0, hipY = leg + lr * .9, by = R * .78, zf = L * .76;
     const body = c.body = grp(0, hipY, -L * .38); c.root.add(body);
-    body.add(ball(o.coat, 0, by, zf * .5, R, R * .96, L * .5 + R * .5), ball(o.coat, 0, by + R * .04, zf * .86, R * 1.02, R, R * .95), ball(o.coat, 0, by, zf * .1, R * .98, R * .95, R));
+    body.add(ball(o.coat, 0, by, zf * .46, R, R * .97, L * .5 + R * .56), ball(o.coat, 0, by + R * .03, zf * .82, R * 1.01, R * .99, R * .9));
     if (L > R * 2.2) body.add(limb(o.coat, R * .97, zf * .8, 0, by, zf * .1, -Math.PI / 2), limb(o.belly || o.coat, R * .8, zf * .7, 0, by - R * .22, zf * .15, -Math.PI / 2)); else body.add(ball(o.belly || o.coat, 0, by - R * .24, zf * .52, R * .8, R * .78, L * .5 + R * .3)); if (o.bib) body.add(ball(o.bib, 0, by - R * .1, zf * .98 + R * .28, R * .62, R * .74, R * .5));
     if (o.saddle) body.add(ball(o.saddle, 0, by + R * .22, zf * .45, R * .84, R * .8, L * .5 + R * .3));
     if (o.spots) for (let i = 0; i < 9; i++) { const a = (i % 2 ? 1 : -1) * (.5 + (i % 3) * .28); body.add(ball(mat(o.spots, { rim: 0 }), Math.sin(a) * R * .93, by + Math.cos(a) * R * .9, zf * (.12 + i * .09), R * .13, R * .13, R * .1)); }
@@ -60,6 +60,7 @@ const Critter = (() => {
     if (o.mask) for (const s of [-1, 1]) head.add(ball(mat(o.mask, { rim: 0 }), s * H * .4, H * .06, H * .7, H * .4, H * .3, H * .32, 0, s * .4, s * -.3));
     if (o.blaze) head.add(ball(o.blaze, 0, H * .18, H * .6, H * .2, H * .56, H * .46));
     head.add(ball(o.muzzle || o.belly || o.coat, 0, -H * .26, H * .62, H * .5, H * .4, sn), ball(o.nose || DARK, 0, -H * .13, H * .62 + sn * .9, H * .16, H * .12, H * .1));
+    if (o.teeth) head.add(ball(mat(0xfff6dc, { rim: 0 }), 0, -H * .5, H * .62 + sn * .7, H * .13, H * .13, H * .05));
     c.tongue = ball(mat(0xf58aa0, { rim: 0 }), 0, -H * .52, H * .72 + sn * .3, H * .13, H * .05, H * .2); c.tongue.visible = false; if (o.tongue) head.add(c.tongue);
     eyes(c, head, H * (o.eyeX || .44), H * .06, H * .8, o.eye || H * .21, { iris: o.iris, splay: .34 }); if (o.blush !== false) blush(head, H * .68, -H * .24, H * .58, H * .2, o.blush);
     c.ears = [-1, 1].map(s => { const e = new T.Group(), E = o.earS || 1; head.add(e);
@@ -257,7 +258,7 @@ const Critter = (() => {
     c.legs = [-1, 1].map(s => { const l = grp(s * .12, .05, 0, limb(pants, .095, .58, 0, 0, 0), ball(o.shoe || 0x3a2d24, 0, -.74, .05, .1, .07, .16)); body.add(l); return l; });
     c.arms = [-1, 1].map(s => { const a = grp(s * .29, .52, 0, limb(shirt, .07, .3, 0, 0, 0), ball(skin, 0, -.42, 0, .075)); a.rotation.z = s * .14; body.add(a); return a; });
     const head = c.head = grp(0, .92, .02); body.add(head); head.add(ball(skin, 0, 0, 0, .29, .28, .27));
-    if (o.hair) head.add(ball(o.hair, 0, .07, -.05, .3, .26, .28)); if (o.bun) head.add(ball(o.hair, 0, .3, -.12, .12)); if (o.tails) for (const s of [-1, 1]) head.add(ball(o.hair, s * .3, -.02, -.08, .09, .14, .09));
+    if (o.hair) head.add(o.hat ? ball(o.hair, 0, -.02, -.07, .29, .22, .25) : ball(o.hair, 0, .07, -.05, .3, .26, .28)); if (o.bun) head.add(ball(o.hair, 0, .3, -.12, .12)); if (o.tails) for (const s of [-1, 1]) head.add(ball(o.hair, s * .3, -.02, -.08, .09, .14, .09));
     if (o.hat === 'hard') head.add(ball(o.hatCol || 0xf2d24b, 0, .13, 0, .31, .2, .31), ball(o.hatCol || 0xf2d24b, 0, .09, .2, .2, .03, .16)); else if (o.hat === 'cap') head.add(ball(o.hatCol || 0x2f6b4a, 0, .14, -.01, .3, .18, .29), ball(o.hatCol || 0x2f6b4a, 0, .1, .26, .17, .025, .15)); else if (o.hat === 'bucket') head.add(ball(o.hatCol || 0xe9dcc0, 0, .16, 0, .29, .17, .28), ball(o.hatCol || 0xe9dcc0, 0, .08, 0, .4, .035, .39));
     eyes(c, head, .11, -.01, .235, .042, { splay: .3 }); blush(head, .17, -.08, .2, .05); head.add(ball(mat(0x8a4a3a, { rim: 0 }), 0, -.11, .255, .04, .014, .02));
     if (o.beard) head.add(ball(o.beard, 0, -.14, .15, .2, .13, .15)); if (o.glasses) for (const s of [-1, 1]) head.add(part(new T.TorusGeometry(.06, .012, 6, 14), mat(0x2a2a2a, { rim: 0 }), s * .11, -.01, .262));
@@ -269,5 +270,32 @@ const Critter = (() => {
     };
     return c;
   }
-  return { mat, part, ball, cone, cyl, limb, grp, rig, eyes, blush, life, quad, vinca, fox, raccoon, deer, duck, frog, turtle, fish, angler, isopod, dumbo, human, SPH, CONE, CYL, lp, cl };
+
+  /* ---------------- perching birds: owl, crow, heron ---------------- */
+  function bird(o) {
+    o = o || {}; const c = rig(o.h || .9), coat = o.coat || 0x7a5a3c, lt = o.light || 0xd9c39a, dk = o.dark || 0x5f452d, leg = o.leg || .1, nk = o.neck || 0, H = o.head || .2, B = o.body || .22;
+    const body = c.body = grp(0, leg + B * 1.05, 0); c.root.add(body); body.add(ball(coat, 0, 0, -B * .08, B, B * 1.15, B * (o.long || 1)), ball(lt, 0, -B * .1, B * .22, B * .78, B * .95, B * .7 * (o.long || 1)));
+    c.wings = [-1, 1].map(s => { const w = grp(s * B * .9, B * .25, -B * .05, ball(dk, s * B * .08, -B * .45, -B * .1, B * .28, B * .85, B * .7 * (o.long || 1))); body.add(w); return w; });
+    body.add(ball(dk, 0, -B * .5, -B * .95 * (o.long || 1), B * .4, B * .1, B * .5, .5));
+    c.feet = [-1, 1].map(s => { const f = limb(o.legCol || 0xd9a23a, .016 + leg * .01, leg + B * .3, s * B * .4, -B * .75, 0); body.add(f); body.add(ball(o.legCol || 0xd9a23a, s * B * .4, -B * 1.05 - leg, .03, .05, .015, .07)); return f; });
+    const neck = c.neck = grp(0, B * .8, B * .3); body.add(neck); if (nk) { neck.add(limb(lt, .05, nk * .55, 0, 0, 0, Math.PI + .3), limb(lt, .042, nk * .55, 0, nk * .525, nk * .162, Math.PI - .15), ball(lt, 0, nk * .525, nk * .162, .05)); }
+    const head = c.head = grp(0, nk ? nk * 1.08 : H * .7, nk ? nk * .1 : 0); neck.add(head); head.add(ball(o.headCol || coat, 0, 0, 0, H * 1.06, H * .95, H));
+    if (o.disc) for (const s of [-1, 1]) head.add(ball(mat(o.disc, { rim: 0 }), s * H * .42, 0, H * .62, H * .5, H * .52, H * .34)); if (o.cap) head.add(ball(o.cap, 0, H * .3, -H * .1, H * .8, H * .6, H * .9));
+    if (o.tufts) for (const s of [-1, 1]) head.add(cone(coat, s * H * .62, H * .82, -H * .05, H * .2, H * .6, H * .14, 0, 0, s * -.45));
+    if (o.plume) head.add(limb(o.plume, .014, H * 1.4, 0, H * .5, -H * .4, -1.9));
+    const bl = o.beakL || H * .5; head.add(cone(o.beak || 0xe0a030, 0, -H * .16, H * .78 + bl * .4, H * (o.beakW || .2), bl, H * (o.beakW || .2), Math.PI / 2));
+    eyes(c, head, H * .42, H * .04, H * (o.disc ? .95 : .76), H * (o.eye || .24), { iris: o.iris, splay: o.disc ? .2 : .5 }); if (o.blush !== false) blush(head, H * .7, -H * .22, H * .56, H * .17);
+    c.anim = (dt, t, st) => { st = typeof st === 'object' && st ? st : { speed: 0 }; life(c, dt, st); const tk = st.talk || 0;
+      body.position.y = leg + B * 1.05 + Math.sin(t * 1.7 + c.ph) * .008; body.scale.y = 1 + Math.sin(t * 1.7 + c.ph) * .02; const fl = Math.max(0, Math.sin(t * .31 + c.ph) - .965) * 28; c.wings.forEach((w, i) => w.rotation.z = (i ? 1 : -1) * (fl * (.5 + Math.sin(t * 30) * .4) + tk * .12 * Math.abs(Math.sin(t * 9))));
+      const want = st.look !== undefined && st.look !== 0 ? cl(st.look, -1.4, 1.4) : Math.sin(t * (o.turn || .5) + c.ph) * (o.swivel || .6) * (.5 + .5 * Math.sin(t * .23 + c.ph));
+      head.rotation.y = lp(head.rotation.y, want, Math.min(1, dt * 5)); head.rotation.z = c.tilt * 1.4; head.rotation.x = Math.sin(t * 13) * .07 * tk + (o.peck ? Math.max(0, Math.sin(t * .8 + c.ph) - .9) * 4 : 0); neck.rotation.x = nk ? Math.sin(t * .4 + c.ph) * .06 : 0; };
+    return c;
+  }
+  const owl = () => bird({ h: .95, coat: 0x8a6442, light: 0xe6d2a8, dark: 0x6a4c30, head: .25, body: .24, disc: 0xf0e2c0, tufts: 1, iris: 0xf2b01e, eye: .3, beakL: .08, beakW: .14, swivel: 1.1, leg: .04 });
+  const crow = () => bird({ h: .7, coat: 0x2a2b36, light: 0x3a3c4a, dark: 0x1c1d26, head: .15, body: .17, beak: 0x3a3c44, beakL: .16, beakW: .26, eye: .27, long: 1.3, legCol: 0x3a3c44, leg: .08, peck: 1, blush: false, turn: .9 });
+  const heron = () => bird({ h: 2.0, coat: 0x8fa3b5, light: 0xeef2f3, dark: 0x6f8296, head: .17, body: .26, long: 1.4, neck: .72, leg: .78, legCol: 0x9a9a62, beak: 0xe8b23a, beakL: .36, beakW: .34, cap: 0x2a2f38, plume: 0x2a2f38, iris: 0xf2c020, eye: .2, swivel: .5, turn: .27 });
+  const beaver = () => quad({ h: 1.0, L: .5, R: .36, leg: .15, legR: .09, head: .34, coat: 0x9a6a44, belly: 0xc49a6e, muzzle: 0xc49a6e, sock: 0x4a3226, nose: 0x2a1c16, ear: 'round', earS: .55, earIn: 0x6a4630, tail: 'stub', tailTip: 0x4a3226, eye: .066, snout: .13, stride: .6, teeth: 1 });
+  const possum = () => quad({ h: .9, L: .46, R: .26, leg: .16, legR: .06, head: .28, coat: 0xb4b3b0, saddle: 0x8f8e8c, belly: 0xf4f2ec, muzzle: 0xf8f6f0, cap: 0xf8f6f0, sock: 0x3a3838, nose: 0xf0a6b4, ear: 'round', earS: .7, earOut: 0x2a2828, earIn: 0x4a4646, tail: 'stub', tailTip: 0xf0a6b4, eye: .056, snout: .2, stride: .6 });
+  const squirrel = () => quad({ h: .8, L: .3, R: .2, leg: .12, legR: .05, head: .24, coat: 0xc0622e, belly: 0xf6e6cc, bib: 0xf6e6cc, muzzle: 0xf6e6cc, sock: 0x8a4420, ear: 'point', earS: .6, earIn: 0xf2b6a0, tail: 'bush', tailCol: 0xd07a3a, tailTip: 0xe8a060, eye: .056, snout: .1, stride: .9, sit: 1, gait: 1.6 });
+  return { mat, part, ball, cone, cyl, limb, grp, rig, eyes, blush, life, quad, bird, owl, crow, heron, beaver, possum, squirrel, vinca, fox, raccoon, deer, duck, frog, turtle, fish, angler, isopod, dumbo, human, SPH, CONE, CYL, lp, cl };
 })();
