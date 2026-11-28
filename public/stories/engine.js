@@ -119,7 +119,10 @@ const U = { level(def) { LV = def; } };
 const LEVELS = [
   { id: 'pond', n: 'One', title: 'Still Water', tag: 'A pond, a subdivision, and a smell like wet sidewalk.' },
   { id: 'rig', n: 'Two', title: 'Pressure', tag: 'Two kilometres down, under Platform Nine, the garden is dying politely.' },
-  { id: 'links', n: 'Three', title: 'Out of Bounds', tag: 'Eighteen baskets, one herd, and a line of orange ribbon that lies.' }
+  { id: 'links', n: 'Three', title: 'Out of Bounds', tag: 'Eighteen baskets, one herd, and a line of orange ribbon that lies.' },
+  { id: 'city', n: 'Four', title: 'Flyway', tag: 'A glass tower switched its lights on. Somewhere inside the glare, a very small bird is lost.' },
+  { id: 'peak', n: 'Five', title: 'Cold Case', tag: 'The winter stores are gone, the creek is dry, and the mountain has already decided who did it.' },
+  { id: 'dam', n: 'Six', title: 'The Run', tag: 'Nine hundred miles upstream there is a wall. Tonight, three professionals are going through it.' }
 ];
 let S = null, R = null;
 const MY = { char: null, slot: null };
@@ -127,7 +130,7 @@ const PREF_KEY = 'understory.prefs.v1';
 let PREF = { mute: false, name: '' };
 try { Object.assign(PREF, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { }
 function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(PREF)); } catch (e) { } }
-function freshState(seed) { return Object.assign({ v: 's1', lv: LV.id, seed: seed || (Math.random() * 2e9 | 0) + 1, st: 0, f: {}, clues: [], inv: [], disc: [], hold: {} }, LV.state ? LV.state() : {}); }
+function freshState(seed) { return Object.assign({ v: 's1', lv: LV.id, seed: seed || (Math.random() * 2e9 | 0) + 1, st: 0, f: {}, clues: [], inv: [], disc: [], hold: {}, c: {} }, LV.state ? LV.state() : {}); }
 const has = (i) => S.inv.includes(i);
 const flag = (k) => !!S.f[k];
 const CH = () => LV.chars[MY.char];
@@ -143,13 +146,21 @@ const DIRS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', '
 const dirName = (dx, dz) => DIRS[((Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) % 8) + 8) % 8];
 
 /* ---------------- colliders: circles in a grid, optionally only between two heights ---------------- */
-function collide(p, pr) {
-  const cx = Math.floor(p.x / CELL), cz = Math.floor(p.z / CELL);
+function collide(p, pr, under) {
+  const cx = Math.floor(p.x / CELL), cz = Math.floor(p.z / CELL); let hit = null;
   for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
     const a = COLS.get((cx + i) + ',' + (cz + j)); if (!a) continue;
-    for (const c of a) { if (!c.on || (c.top !== undefined && p.y > c.top) || (c.bot !== undefined && p.y + .5 < c.bot)) continue; const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), m = c.r + pr; if (d < m && d > 1e-4) { p.x = c.x + dx / d * m; p.z = c.z + dz / d * m; } }
+    for (const c of a) { if (!c.on || (under && c.low) || (c.top !== undefined && p.y > c.top) || (c.bot !== undefined && p.y + .5 < c.bot)) continue; const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), m = c.r + pr; if (d < m && d > 1e-4) { p.x = c.x + dx / d * m; p.z = c.z + dz / d * m; } }
   }
+  for (const b of BOXES) { if (!b.on || (under && b.low) || p.y >= b.top - (b.step || .5) || p.y + .6 < b.bot) continue;
+    if (p.x > b.x0 - pr && p.x < b.x1 + pr && p.z > b.z0 - pr && p.z < b.z1 + pr) { const dl = p.x - (b.x0 - pr), dr = (b.x1 + pr) - p.x, dn = p.z - (b.z0 - pr), df = (b.z1 + pr) - p.z, m = Math.min(dl, dr, dn, df); if (m === dl) p.x = b.x0 - pr; else if (m === dr) p.x = b.x1 + pr; else if (m === dn) p.z = b.z0 - pr; else p.z = b.z1 + pr; hit = b; } }
+  return hit;
 }
+/* solid boxes: walls on the sides, a floor on top. block(x0, x1, z0, z1, top, { bot, low, climb, step, noCam }).
+   low: burrowers pass underneath. climb: false stops climbers. Set .on = false to open it. */
+const BOXES = [];
+function block(x0, x1, z0, z1, top, o) { const b = Object.assign({ x0, x1, z0, z1, top, bot: -1e9, on: true }, o || {}); BOXES.push(b); b.plat = addPlat({ x0, x1, z0, z1, y: top, step: b.step || .5, get on() { return b.on; } }); return b; }
+const inBox = (x, y, z, m) => { for (const b of BOXES) if (b.on && !b.noCam && x > b.x0 - m && x < b.x1 + m && z > b.z0 - m && z < b.z1 + m && y < b.top + m && y > b.bot) return true; return false; };
 /* things to stand on: { x, z, r, y } or { x0, x1, z0, z1, y }, optionally only: [charKeys] */
 const PLAT = [];
 function addPlat(p) { PLAT.push(p); return p; }
@@ -185,14 +196,14 @@ let moodNow = null, moodFrom = null, moodTo = null, moodT = 1;
 function moodVals(m) { const o = { dir: m.dir.slice(), grade: (m.grade || [1, 1, 1]).slice(), sunI: m.sunI, hemI: m.hemI, fd: m.fd, stars: m.stars || 0, cloud: m.cloud === undefined ? .5 : m.cloud, bloom: m.bloom === undefined ? .55 : m.bloom, lamps: m.lamps || 0 }; for (const k of COLK) o[k] = hex(m[k] === undefined ? 0xffffff : m[k]); return o; }
 function setMood(name, instant) { if (WORLD.mood === name && !instant) return; const v = moodVals(LV.moods[name]); if (instant || !moodNow) { moodNow = v; moodT = 1; } else { moodFrom = moodNow; moodTo = v; moodT = 0; } WORLD.mood = name; }
 function tickMood(dt) { if (moodT >= 1) return; moodT = Math.min(1, moodT + dt / 4); const t = smooth(moodT), a = moodFrom, b = moodTo, o = {}; for (const k in b) o[k] = Array.isArray(b[k]) ? b[k].map((v, i) => lerp(a[k][i], v, t)) : lerp(a[k], b[k], t); moodNow = o; }
-const waterY = () => { const w = LV.env.waterY; return w === undefined ? -1e9 : typeof w === 'function' ? w() : w; };
+const waterY = (x, z) => { const w = LV.env.waterY; return w === undefined ? -1e9 : typeof w === 'function' ? w(x === undefined ? player.x : x, z === undefined ? player.z : z) : w; };
 function applyEnv(dt, t) {
   const m = moodNow, u = LV.env.under, k = u ? UW : 0, uc = (key) => u && u[key] !== undefined ? mix3(m[key], hex(u[key]), k) : m[key];
   skyU.top.value.setRGB(...m.top); skyU.hor.value.setRGB(...m.hor); skyU.sunC.value.setRGB(...m.sunC); skyU.cl.value.setRGB(...m.cl); skyU.stars.value = m.stars; skyU.cloud.value = m.cloud; skyU.time.value = t; skyU.sunDir.value.set(...m.dir).normalize();
   const fog = uc('fog'); scene.fog.color.setRGB(...fog); scene.fog.density = u ? lerp(m.fd, u.fd, k) : m.fd; skyMesh.visible = !LV.env.sea && k < .5; scene.background = skyMesh.visible ? null : scene.fog.color;
   sun.color.setRGB(...m.sunC); sun.intensity = m.sunI * 2.5 * (u ? lerp(1, u.sun === undefined ? .6 : u.sun, k) : 1); sun.target.position.set(player.x, player.y, player.z); sun.position.copy(skyU.sunDir.value).multiplyScalar(90).add(sun.target.position); { const k = renderer.shadowMap.enabled && sun.castShadow ? (LV.env.shadowK || .6) : 1, I = sun.intensity; sun.intensity = I * k; sunFill.intensity = I * (1 - k); sunFill.color.copy(sun.color); sunFill.position.copy(sun.position); }
   hemi.color.setRGB(...uc('hemS')); hemi.groundColor.setRGB(...uc('hemG')); hemi.intensity = m.hemI * 1.35;
-  if (WORLD.waterU) { const w = WORLD.waterU; w.time.value = t; w.sky.value.setRGB(...m.hor); w.sunC.value.setRGB(...m.sunC); w.fogC.value.copy(scene.fog.color); w.fd.value = scene.fog.density; w.night.value = m.stars; }
+  for (const wq of WORLD.waters || []) { const w = wq.u; w.time.value = t; w.sky.value.setRGB(...m.hor); w.sunC.value.setRGB(...m.sunC); w.fogC.value.copy(scene.fog.color); w.fd.value = scene.fog.density; w.night.value = m.stars; }
   CAUS.value.x = t; CAUS.value.y = waterY(); CAUS.value.z = LV.env.caustics ? LV.env.caustics * m.sunI * (.35 + .65 * k) : 0;
   if (POST) { const p = POST.u; p.bloom.value = u ? lerp(m.bloom, u.bloom === undefined ? .8 : u.bloom, k) : m.bloom; const g = u && u.grade ? mix3(m.grade, u.grade, k) : m.grade; p.grade.value.set(g[0], g[1], g[2]); p.wob.value = (LV.env.sea ? 1 : k) * (LV.env.wobble === undefined ? .0022 : LV.env.wobble); p.time.value = t; }
   for (const l of WORLD.lamps || []) l.intensity = l.userData.i * m.lamps;
@@ -269,23 +280,27 @@ function heightAt(x, z) { const fx = (x + TER.s / 2) / TER.c, fz = (z + TER.s / 
   const u = fx - i, v = fz - j, w = n + 1, a = HG[j * w + i], b = HG[j * w + i + 1], c = HG[(j + 1) * w + i], d = HG[(j + 1) * w + i + 1]; return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v); }
 /* a water surface that knows how deep it is: foam at the edges, ripples, sparkle, and a bright ceiling from below */
 function water(o) {
-  const g = new THREE.PlaneGeometry(o.size, o.size, o.seg || 90, o.seg || 90); g.rotateX(-Math.PI / 2); g.translate(o.x || 0, 0, o.z || 0); const p = g.attributes.position, dep = new Float32Array(p.count), y0 = waterY(); for (let i = 0; i < p.count; i++) dep[i] = y0 - heightAt(p.getX(i), p.getZ(i)); g.setAttribute('dep', new THREE.BufferAttribute(dep, 1));
-  const u = WORLD.waterU = { time: { value: 0 }, shallow: { value: new THREE.Color(o.shallow || 0x7fd0c8) }, deep: { value: new THREE.Color(o.deep || 0x2c6f8a) }, sky: { value: new THREE.Color() }, sunC: { value: new THREE.Color() }, fogC: { value: new THREE.Color() }, fd: { value: .01 }, drop: { value: 0 }, murk: { value: 0 }, murkC: { value: new THREE.Color(o.murk || 0xb9b7a8) }, night: { value: 0 } };
+  const sx = o.sx || o.size, sz = o.sz || o.size, cx = o.x || 0, cz = o.z || 0, level = o.level || (() => waterY(cx, cz)), seg = o.seg || 90;
+  const g = new THREE.PlaneGeometry(sx, sz, seg, Math.max(2, Math.round(seg * sz / sx))); g.rotateX(-Math.PI / 2); g.translate(cx, 0, cz); const p = g.attributes.position, dep = new Float32Array(p.count), y0 = level(); for (let i = 0; i < p.count; i++) dep[i] = y0 - heightAt(p.getX(i), p.getZ(i)); g.setAttribute('dep', new THREE.BufferAttribute(dep, 1));
+  const u = { time: { value: 0 }, shallow: { value: new THREE.Color(o.shallow || 0x7fd0c8) }, deep: { value: new THREE.Color(o.deep || 0x2c6f8a) }, sky: { value: new THREE.Color() }, sunC: { value: new THREE.Color() }, fogC: { value: new THREE.Color() }, fd: { value: .01 }, drop: { value: 0 }, murk: { value: 0 }, murkC: { value: new THREE.Color(o.murk || 0xb9b7a8) }, night: { value: 0 }, flow: { value: new THREE.Vector2(o.flow ? o.flow[0] : 0, o.flow ? o.flow[1] : 0) }, still: { value: o.flat ? 1 : 0 } };
   const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: u, transparent: true, side: THREE.DoubleSide, depthWrite: false,
     vertexShader: 'attribute float dep; varying float vDep; varying vec3 vW; varying float vDist; void main(){ vDep=dep; vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; vec4 mv=viewMatrix*w; vDist=length(mv.xyz); gl_Position=projectionMatrix*mv; }',
-    fragmentShader: `uniform float time,fd,drop,murk,night; uniform vec3 shallow,deep,sky,sunC,fogC,murkC; varying float vDep,vDist; varying vec3 vW;
-    void main(){ vec2 p=vW.xz; float d=vDep-drop; if(d<-.02) discard;
+    fragmentShader: `uniform float time,fd,drop,murk,night,still; uniform vec2 flow; uniform vec3 shallow,deep,sky,sunC,fogC,murkC; varying float vDep,vDist; varying vec3 vW;
+    void main(){ vec2 p=vW.xz-flow*time; float d=mix(vDep-drop,3.,still); if(d<-.02) discard;
       float r1=sin(p.x*.9+time*.8+sin(p.y*.7+time*.5)*1.4), r2=sin(p.y*1.3-time*.6+sin(p.x*.5-time*.3)*1.7), rip=(r1+r2)*.5;
       vec3 c=mix(shallow,deep,smoothstep(0.,2.6,d)); c=mix(c,murkC,murk*(.55+.2*rip)); c=mix(c,c*.35+vec3(.02,.05,.1),night*.7);
       c+=sky*.2*smoothstep(.15,.9,rip); float sp=pow(max(0.,sin(p.x*3.3+time*1.9+r2)*sin(p.y*2.9-time*1.5+r1)),14.); c+=sunC*sp*.7*(1.-night*.7);
-      float foam=smoothstep(.42,.0,d+rip*.1)*(.7+.3*sin(p.x*5.+p.y*4.+time*2.)); c=mix(c,vec3(.97,1.,.98),foam*.75*(1.-night*.5));
+      float foam=smoothstep(.42,.0,d+rip*.1)*(.7+.3*sin(p.x*5.+p.y*4.+time*2.)); foam=max(foam,length(flow)*.05*smoothstep(.55,.95,sin(p.x*2.3+r2)*sin(p.y*1.9+r1))); c=mix(c,vec3(.97,1.,.98),foam*.75*(1.-night*.5));
       float a=mix(.5,.93,smoothstep(0.,1.5,d)); a=max(a,foam*.9);
       if(!gl_FrontFacing){ float k=pow(.5+.5*rip,2.); c=mix(deep*.9,sky*.9+sunC*.25,k*.75+.1); a=.82; }
       float f=1.-exp(-fd*fd*vDist*vDist); c=mix(c,fogC,f); gl_FragColor=vec4(c,a); }` }));
-  m.position.y = y0; m.renderOrder = 2; m.userData.y0 = y0; scene.add(m); WORLD.water = m;
-  WORLD.anim.push((dt) => { const y = waterY(); m.position.y += (y - m.position.y) * Math.min(1, dt * .6); u.drop.value = m.userData.y0 - m.position.y; });
+  m.position.y = y0; m.renderOrder = 2; m.userData.y0 = y0; scene.add(m); (WORLD.waters || (WORLD.waters = [])).push({ m, u, level }); if (!WORLD.water) { WORLD.water = m; WORLD.waterU = u; }
+  WORLD.anim.push((dt) => { const y = level(); m.position.y += (y - m.position.y) * Math.min(1, dt * .6); u.drop.value = m.userData.y0 - m.position.y; });
   return m;
 }
+/* footprints and other marks pressed into the ground: tracks(n, colour, opacity).add(x, z, yaw, size, stretch) */
+function tracks(n, col, op) { const g = new THREE.CircleGeometry(1, 8); g.rotateX(-Math.PI / 2); const im = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op || .5, depthWrite: false }), n), d = new THREE.Object3D(); im.count = 0; im.frustumCulled = false; im.renderOrder = 1; scene.add(im); let i = 0;
+  return { im, add(x, z, yaw, s, sl) { d.position.set(x, heightAt(x, z) + .04, z); d.rotation.set(0, yaw || 0, 0); d.scale.set(s, 1, s * (sl || 1.5)); d.updateMatrix(); im.setMatrixAt(i % n, d.matrix); i++; im.count = Math.min(n, i); im.instanceMatrix.needsUpdate = true; } }; }
 /* many copies of one shape. list: [{x,y,z,s|sx,sy,sz,rx,ry,rz,c:[r,g,b]}] */
 function inst(geo, mat, list, o) { o = o || {}; const im = new THREE.InstancedMesh(geo, mat, list.length), d = new THREE.Object3D(), c = new THREE.Color(); list.forEach((q, i) => { d.position.set(q.x, q.y, q.z); d.rotation.set(q.rx || 0, q.ry || 0, q.rz || 0); d.scale.set(q.sx || q.s || 1, q.sy || q.s || 1, q.sz || q.s || 1); d.updateMatrix(); im.setMatrixAt(i, d.matrix); if (q.c) im.setColorAt(i, c.setRGB(q.c[0], q.c[1], q.c[2])); }); im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; im.frustumCulled = false; im.castShadow = o.cast !== false; im.receiveShadow = o.recv !== false; scene.add(im); return im; }
 /* try n random points inside radius r; fn(x, z, h) returns an instance or nothing */
@@ -361,6 +376,7 @@ const sfx = {
   quack: () => { tone(520, .1, 'sawtooth', .2, .7); tone(470, .14, 'sawtooth', .2, .6, .13); }, peep: () => { for (let i = 0; i < 3; i++) tone(2900, .13, 'sine', .2, 1.14, i * .2); }, glub: () => { tone(160, .2, 'sine', .25, 2.4); tone(240, .16, 'sine', .2, 2.2, .14); },
   ping: () => { tone(1480, .8, 'sine', .16, 1); tone(2220, .5, 'sine', .06, 1, .05); }, thrum: () => { tone(70, .5, 'sine', .3, .8); tone(105, .4, 'triangle', .14, .8, .05); }, glow: () => [880, 1108, 1318].forEach((f, i) => tone(f, .5, 'sine', .12, 1, i * .05)),
   turn: () => { tone(180, .18, 'square', .14, 1.6); noiseHit(700, 2, .1, .25); }, clank: () => { tone(140, .25, 'square', .18, .7); noiseHit(2200, 3, .08, .3); }, chime: (i) => { tone([392, 440, 523.3, 587.3, 659.3][i % 5], .55, 'triangle', .34); },
+  caught: () => { tone(520, .16, 'square', .16); tone(370, .32, 'square', .16, 0, .16); }, whoosh: () => noiseHit(900, .6, .35, .3), bell: () => { tone(880, 1.2, 'sine', .2); tone(1320, .9, 'sine', .08, 1, .02); },
   splash: () => noiseHit(1800, .7, .18, .25), step: () => noiseHit(380 + Math.random() * 200, 1.4, .05, .09), bark: () => { tone(420, .09, 'sawtooth', .22, .7); tone(380, .12, 'sawtooth', .22, .6, .11); }, snort: () => { noiseHit(500, 1.2, .16, .4); noiseHit(380, 1.2, .2, .35, .12); }
 };
 
@@ -398,7 +414,7 @@ function openSheet(html, onClose, noX) { sheetOpen = true; sheetClose = onClose 
 function closeSheet(skip) { if (!sheetOpen) return; sheetOpen = false; $('#sheet').classList.add('hide'); const f = sheetClose; sheetClose = null; if (f && !skip) f(); if (Dlg.on) { $('#dlg').classList.remove('hide'); if (!Dlg.node || Dlg.hold) { Dlg.hold = false; dlgNext(); } } else if (started && !cardOpen) $('#hud').classList.remove('hide'); }
 /* cards: [[title, text, kind, kicker]] */
 function showCards(cards, done) { cardOpen = true; let i = 0; const c = $('#chap'); c.classList.remove('hide'); $('#hud').classList.add('hide');
-  const show = () => { const k = cards[i]; c.innerHTML = `${k[0] ? `<small>${k[3] || ''}</small><h2>${k[0]}</h2>` : ''}<p>${k[1]}</p><div class="tap">${k[2] === 'end' ? 'tap to keep exploring' : 'tap'}</div>`; requestAnimationFrame(() => c.classList.add('on')); };
+  const show = () => { const k = cards[i]; if (!k) return; c.innerHTML = `${k[0] ? `<small>${k[3] || ''}</small><h2>${k[0]}</h2>` : ''}<p>${k[1]}</p><div class="tap">${k[2] === 'end' ? 'tap to keep exploring' : 'tap'}</div>`; requestAnimationFrame(() => c.classList.add('on')); };
   let lock = performance.now() + 700; c.onclick = () => { if (performance.now() < lock) return; lock = performance.now() + 500; i++; if (i >= cards.length) { c.classList.remove('on'); setTimeout(() => { c.classList.add('hide'); cardOpen = false; if (Dlg.on) { Dlg.hold = false; $('#dlg').classList.remove('hide'); dlgNext(); } else if (started && !sheetOpen) $('#hud').classList.remove('hide'); if (done) done(); }, 700); c.onclick = null; } else { c.classList.remove('on'); setTimeout(show, 380); } }; show(); }
 function fade(mid, after) { const f = $('#fade'); f.classList.add('on'); busy = true; setTimeout(() => { mid && mid(); setTimeout(() => { f.classList.remove('on'); busy = false; after && after(); }, 250); }, 720); }
 
@@ -426,7 +442,7 @@ function openMenu() { if (!started) return; const full = !!(document.fullscreenE
 /* ---------------- input ---------------- */
 const IN = { mx: 0, my: 0, jump: false, up: false, down: false, look: null, stick: null, keys: {}, lastLook: 0, moved: false };
 function syncSoundBtn() { document.querySelectorAll('.sndBtn').forEach(b => { b.classList.toggle('off', !!PREF.mute); const t = b.querySelector('span'); if (t) t.textContent = PREF.mute ? 'Sound off' : 'Sound on'; }); }
-const pitchLim = () => player.mode === 'dive' ? [-1.2, 1.25] : [.03, 1.2];
+const pitchLim = () => player.mode === 'dive' || player.mode === 'fly' ? [-1.2, 1.25] : [.03, 1.2];
 function lookBy(dx, dy) { const [a, b] = pitchLim(); cam.yaw -= dx * .0058; cam.pitch = clamp(cam.pitch + dy * .004, a, b); IN.lastLook = performance.now(); }
 function initInput() {
   const cvs = $('#gl'), st = $('#stick');
@@ -446,10 +462,10 @@ function initInput() {
   addEventListener('blur', resetTouch); document.addEventListener('visibilitychange', resetTouch);
   $('#dlg').addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; e.preventDefault(); dlgTap(); });
   document.addEventListener('contextmenu', (e) => e.preventDefault()); document.addEventListener('gesturestart', (e) => e.preventDefault());
-  addEventListener('keydown', (e) => { if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return; const first = !IN.keys[e.code]; IN.keys[e.code] = true; if (e.code === 'Space') { e.preventDefault(); if (Dlg.on) dlgTap(); else if (first) IN.jump = true; } if (e.code === 'KeyE' || e.code === 'Enter') { if (Dlg.on) dlgTap(); else doAct(); } if (e.code === 'KeyQ') doSense(); if (e.code === 'KeyJ') openJournal(); if (e.code === 'Escape') { if (sheetOpen) closeSheet(); else if (!paused()) openMenu(); } if (!IN.moved && /Key[WASD]|Arrow/.test(e.code)) { IN.moved = true; $('#hint').classList.add('hide'); } });
+  addEventListener('keydown', (e) => { if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return; const first = !IN.keys[e.code]; IN.keys[e.code] = true; if (e.code === 'Space') { e.preventDefault(); if (Dlg.on) dlgTap(); else if (first) IN.jump = true; } if (e.code === 'KeyE' || e.code === 'Enter') { if (Dlg.on) dlgTap(); else doAct(); } if (first && (e.code === 'KeyC' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) IN.dn = true; if (e.code === 'KeyQ') doSense(); if (e.code === 'KeyJ') openJournal(); if (e.code === 'Escape') { if (sheetOpen) closeSheet(); else if (!paused()) openMenu(); } if (!IN.moved && /Key[WASD]|Arrow/.test(e.code)) { IN.moved = true; $('#hint').classList.add('hide'); } });
   addEventListener('keyup', (e) => { IN.keys[e.code] = false; });
   const press = (id, fn, up) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); try { b.setPointerCapture(e.pointerId); } catch (_) { } fn(); }); if (up) for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up); };
-  press('#btnJump', () => { IN.jump = true; IN.up = true; }, () => { IN.up = false; }); press('#btnDown', () => { IN.down = true; }, () => { IN.down = false; }); press('#btnSniff', () => doSense()); press('#btnAct', () => doAct());
+  press('#btnJump', () => { IN.jump = true; IN.up = true; }, () => { IN.up = false; }); press('#btnDown', () => { IN.down = true; IN.dn = true; }, () => { IN.down = false; }); press('#btnSniff', () => doSense()); press('#btnAct', () => doAct());
   $('#btnJournal').onclick = () => openJournal(); $('#btnMenu').onclick = () => openMenu(); $('#obj').onclick = () => openJournal('tasks');
   document.querySelectorAll('.sndBtn').forEach(b => b.onclick = (e) => { e.stopPropagation(); setMute(!PREF.mute); syncSoundBtn(); }); syncSoundBtn();
 }
@@ -462,68 +478,130 @@ const paused = () => Dlg.on || sheetOpen || cardOpen || busy;
 let started = false, busy = false, SPEC = false, specId = null, senseCD = 0;
 const player = { x: 0, z: 0, y: 0, vy: 0, yaw: 2.6, pitch: 0, air: false, under: false, mode: 'land', c: null, g: null, sp: 0, flaps: 0, actT: 0, st: {} };
 const cam = { yaw: .5, pitch: .24, dist: 6.4, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), snap: true };
-function makePlayer(ch) { if (player.g) scene.remove(player.g); const c = LV.chars[ch].make(), g = new THREE.Group(); g.add(c.g); player.sh = blobShadow(.9); if (LV.env.sea) player.sh.visible = false; g.add(player.sh); player.c = c; player.g = g; scene.add(g); g.visible = !SPEC; }
+function makePlayer(ch) { if (player.g) scene.remove(player.g); const c = LV.chars[ch].make(), g = new THREE.Group(); g.add(c.g); player.sh = blobShadow(.9); if (LV.env.sea) player.sh.visible = false; g.add(player.sh); player.c = c; player.g = g; player.mound = mesh(GEO.sph, new THREE.MeshLambertMaterial({ color: LV.env.moundCol || 0xf4f6fa, flatShading: true }), 0, .05, 0, .55, .26, .55); player.mound.visible = false; g.add(player.mound); player.flying = player.burrow = false; player.wall = player.ride = null; scene.add(g); g.visible = !SPEC; }
 function placePlayer(x, z, y) { player.x = x; player.z = z; const ch = CH(), wy = waterY(), gh = heightAt(x, z); player.under = !!LV.env.sea; player.y = y !== undefined ? y : LV.env.sea ? gh + 1.2 : Math.max(gh, wy - ch.draft); player.vy = 0; player.air = false; cam.snap = true; }
 let edgeT = 0;
+const nearBox = (b, p, pr) => p.x > b.x0 - pr - .15 && p.x < b.x1 + pr + .15 && p.z > b.z0 - pr - .15 && p.z < b.z1 + pr + .15;
+/* ride({ at(dt, t) -> [x, y, z, yaw] | null, anim, swim, air, leave, onEnd(finished) }): be carried along by a lift, a chute, a log. Jump hops off unless leave is false. */
+function ride(o) { player.ride = o; player.air = false; player.vy = 0; player.flying = false; player.burrow = false; player.wall = null; }
 function updatePlayer(dt, t) {
-  if (SPEC) return; const ch = CH(), wy = waterY(), sea = !!LV.env.sea, P = paused();
+  if (SPEC) return; const ch = CH(), sea = !!LV.env.sea, P = paused(), c = player.c, s = player.st, pr = ch.r || .45;
+  if (player.ride) { const Q = player.ride, r = Q.at(dt, t), leave = IN.jump && Q.leave !== false && !P; IN.jump = false; IN.dn = false;
+    if (!r || leave) { player.ride = null; player.mode = 'land'; if (leave) { player.vy = 5; player.air = true; } if (Q.onEnd) Q.onEnd(!r); }
+    else { player.x = r[0]; player.y = r[1]; player.z = r[2]; if (r[3] !== undefined) player.yaw = r[3]; player.g.position.set(player.x, player.y, player.z); c.g.rotation.y = player.yaw; c.g.rotation.x = 0; player.sh.visible = false; player.mode = 'ride'; player.sp = 0; player.moving = false; player.pitch = 0;
+      s.speed = Q.anim || 0; s.air = !!Q.air; s.vy = 0; s.swim = !!Q.swim; s.dive = false; s.fly = false; s.talk = speaking(MY.char) ? 1 : 0; s.act = null; s.ride = 1; c.anim(dt, t, s); return; } }
+  s.ride = 0; const wy = waterY(player.x, player.z);
   let mx = IN.mx, my = IN.my; const km = keyMove(); if (km[0] || km[1]) { mx = km[0]; my = km[1]; } if (P) mx = my = 0;
   const mag = Math.min(1, Math.hypot(mx, my)), fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
   let dx = fx * my + rx * mx, dz = fz * my + rz * mx; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
-  const up = !P && (IN.keys.Space || IN.up) ? 1 : 0, down = !P && (IN.keys.KeyC || IN.keys.ShiftLeft || IN.keys.ShiftRight || IN.down) ? 1 : 0;
+  const up = !P && (IN.keys.Space || IN.up) ? 1 : 0, down = !P && (IN.keys.KeyC || IN.keys.ShiftLeft || IN.keys.ShiftRight || IN.down) ? 1 : 0, canB = (x, z) => !LV.canBurrow || LV.canBurrow(x, z);
+  /* burrowers: down to go under, up to come back */
+  if (ch.burrow && !P) { if (!player.burrow && IN.dn && player.mode === 'land' && !player.air && canB(player.x, player.z)) { player.burrow = true; sfx.dig(); burst(player.x, player.y + .2, player.z, 7, LV.env.moundCol || 0xffffff, .3); } else if (player.burrow && IN.jump) { player.burrow = false; IN.jump = false; sfx.dig(); burst(player.x, player.y + .2, player.z, 7, LV.env.moundCol || 0xffffff, .3); } }
+  IN.dn = false;
   const gh = heightAt(player.x, player.z), surf = wy - ch.draft, deep = sea || gh < surf - .02;
-  let mode = 'land'; if (sea) mode = 'dive'; else if (deep && player.y <= surf + .1 && !(player.air && player.vy > 0)) mode = ch.dive && player.under ? 'dive' : 'float';
-  if (mode !== 'dive') player.under = false; if (mode !== player.mode) { if (player.mode === 'land' && mode === 'float' && started) { sfx.splash(); burst(player.x, wy, player.z, 6, 0xeaffff, .3); } player.mode = mode; }
-  const boost = LV.speedMul ? LV.speedMul() : 1, sp = (mode === 'land' ? ch.speed * (gh < wy - .15 ? .72 : 1) : mode === 'float' ? ch.swim : ch.diveSp) * mag * boost;
-  if (mag > .05) { const st = sp * dt, base = mode === 'land' ? Math.max(floorAt(player.x, player.z, player.y), player.y) : 0, top = sea ? 1e9 : surf - .2;
-    const ok = (x, z) => mode === 'land' ? floorAt(x, z, player.y) - base <= st * 1.7 + .04 : mode === 'float' ? heightAt(x, z) - surf <= st * 1.7 + .32 : heightAt(x, z) < top - .05;
-    const nx = player.x + dx * st, nz = player.z + dz * st; if (ok(nx, nz)) { player.x = nx; player.z = nz; } else if (ok(nx, player.z)) player.x = nx; else if (ok(player.x, nz)) player.z = nz;
-    player.yaw += angDiff(Math.atan2(dx, dz), player.yaw) * Math.min(1, dt * (mode === 'land' ? 11 : 6)); }
-  collide(player, ch.r || .45);
+  let mode = 'land'; if (sea) mode = 'dive'; else if (player.flying) mode = 'fly'; else if (deep && player.y <= surf + .1 && !(player.air && player.vy > 0)) { if (ch.fish) player.under = true; mode = ch.dive && player.under ? 'dive' : 'float'; }
+  if (mode !== 'dive') player.under = false; if (mode !== 'land') { player.burrow = false; player.wall = null; }
+  if (mode !== player.mode) { if (player.mode === 'land' && mode === 'float' && started) { sfx.splash(); burst(player.x, wy, player.z, 6, 0xeaffff, .3); } player.mode = mode; }
+  const held_ = MY.hold && CARRY[MY.hold], boost = (LV.speedMul ? LV.speedMul() : 1) * (held_ && held_.heavy ? .7 : 1) * (player.burrow ? (ch.burrowSp || 1.2) : 1);
+  const sp = (mode === 'land' ? ch.speed * (gh < wy - .15 ? .72 : 1) : mode === 'float' ? ch.swim : mode === 'fly' ? ch.flySp : ch.diveSp) * mag * boost;
+  const top3 = sea || mode === 'fly' ? 1e9 : surf - .2, base = mode === 'land' ? Math.max(floorAt(player.x, player.z, player.y), player.y) : 0;
+  const okAt = (x, z, st) => (!player.burrow || canB(x, z)) && (mode === 'land' ? (!!ch.climb || floorAt(x, z, player.y) - base <= st * 1.7 + .04) : mode === 'float' ? heightAt(x, z) - surf <= st * 1.7 + .32 : heightAt(x, z) < top3 - .05);
+  const moveBy = (ax, az, st) => { const nx = player.x + ax, nz = player.z + az; if (okAt(nx, nz, st)) { player.x = nx; player.z = nz; } else if (okAt(nx, player.z, st)) player.x = nx; else if (okAt(player.x, nz, st)) player.z = nz; };
+  if (mag > .05) { const st = sp * dt; moveBy(dx * st, dz * st, st); player.yaw += angDiff(Math.atan2(dx, dz), player.yaw) * Math.min(1, dt * (mode === 'land' ? 11 : 6)); }
+  /* wind and water push back: LV.force(player, mode) -> [vx, vy, vz] */
+  let fy = 0; if (LV.force && !player.burrow) { const f = LV.force(player, mode); if (f) { const st = Math.hypot(f[0], f[2]) * dt; if (st > 0) moveBy(f[0] * dt, f[2] * dt, st + .05); fy = f[1] || 0; } }
+  const hit = collide(player, pr, player.burrow);
+  /* climbers cling to the sides of blocks: push into the wall to go up, jump to let go */
+  let cling = false; if (ch.climb && mode === 'land') { const b = hit || (player.wall && player.wall.on && nearBox(player.wall, player, pr) ? player.wall : null);
+    if (b && b.climb !== false && player.y < b.top - (b.step || .5)) { cling = true; player.wall = b; if (hit === b && mag > .05) { player.y += ch.climb * dt; if (player.y >= b.top - (b.step || .5)) { player.x = clamp(player.x, b.x0 + .3, b.x1 - .3); player.z = clamp(player.z, b.z0 + .3, b.z1 - .3); player.y = b.top; cling = false; player.wall = null; } } } else player.wall = null; }
+  /* things that can be shoved */
+  for (const q of PUSH) { if (q.on === false) continue; const ex = player.x - q.x, ez = player.z - q.z, d = Math.hypot(ex, ez), m = q.r + pr; if (d >= m || d < 1e-4 || Math.abs(player.y - heightAt(q.x, q.z)) > q.r * 2 + 1) continue; let moved = false;
+    if (mode === 'land' && !player.burrow && (!q.skill || canUse(q.skill)) && mag > .05) { const nx = player.x - ex / d * m, nz = player.z - ez / d * m, tp = { x: nx, z: nz, y: heightAt(nx, nz) + .2 }; collide(tp, q.r * .8);
+      if (Math.hypot(tp.x - nx, tp.z - nz) < .01 && Math.abs(heightAt(nx, nz) - heightAt(q.x, q.z)) < (q.climb || .5) && (!q.ok || q.ok(nx, nz))) { const dist = Math.hypot(nx - q.x, nz - q.z); q.x = nx; q.z = nz; q.roll = (q.roll || 0) + dist; q.movedT = t; q.dirty = true; moved = true; if (q.onMove) q.onMove(q, dist); } }
+    if (!moved) { player.x = q.x + ex / d * m; player.z = q.z + ez / d * m; if (q.skill && !canUse(q.skill) && mag > .05 && t - (q.sayT || 0) > 6) { q.sayT = t; toast(T(q.no) || `It won’t budge for you. ${nameOf(whoHas(q.skill))} could shift it.`); } } }
   const B = LV.env.bound; if (B) { const d = Math.hypot(player.x - (B.x || 0), player.z - (B.z || 0)); if (d > B.r) { player.x = (B.x || 0) + (player.x - (B.x || 0)) * B.r / d; player.z = (B.z || 0) + (player.z - (B.z || 0)) * B.r / d; if (t - edgeT > 14) { edgeT = t; toast(LV.env.edge || 'The world goes on. The story does not.'); } } }
   const g1 = heightAt(player.x, player.z);
   if (mode === 'land') { const fl = floorAt(player.x, player.z, player.y), floor = g1 < surf - .02 && fl <= g1 + .01 ? surf : fl;
-    if (IN.jump) { IN.jump = false; if (!P) { if (!player.air && ch.jump) { player.vy = ch.jump; player.air = true; player.flaps = ch.flaps || 0; sfx.jump(); } else if (player.air && player.flaps > 0) { player.vy = ch.flapVy || 6.5; player.flaps--; sfx.flap(); } } }
-    if (player.air) { player.vy -= (player.vy < 0 && ch.glide && up ? 24 * ch.glide : 24) * dt; if (player.vy < -3 && ch.glide && up) player.vy = Math.max(player.vy, -3); player.y += player.vy * dt; if (player.y <= floor) { player.y = floor; player.air = false; player.vy = 0; if (floor === surf) { sfx.splash(); burst(player.x, wy, player.z, 7, 0xeaffff, .32); } } }
-    else if (player.y > floor + .7) { player.air = true; player.vy = 0; player.flaps = ch.flaps || 0; } else player.y += (floor - player.y) * Math.min(1, dt * 18);
+    if (cling) { player.air = false; player.vy = 0; if (IN.jump) { IN.jump = false; if (!P) { player.vy = (ch.jump || 7) * .85; player.air = true; player.wall = null; sfx.jump(); } } if (player.y < floor) player.y = floor; }
+    else { if (IN.jump) { IN.jump = false; if (!P && !player.burrow) { if (!player.air && ch.jump) { player.vy = ch.jump; player.air = true; player.flaps = ch.flaps || 0; sfx.jump(); } else if (player.air && ch.fly) { player.flying = true; player.vy = 3; sfx.flap(); } else if (player.air && player.flaps > 0) { player.vy = ch.flapVy || 6.5; player.flaps--; sfx.flap(); } } }
+      if (player.air) { player.vy -= (player.vy < 0 && ch.glide && up ? 24 * ch.glide : 24) * dt; if (player.vy < -3 && ch.glide && up) player.vy = Math.max(player.vy, -3); player.y += player.vy * dt; if (player.y <= floor) { player.y = floor; player.air = false; player.vy = 0; if (floor === surf) { sfx.splash(); burst(player.x, wy, player.z, 7, 0xeaffff, .32); } } }
+      else if (player.y > floor + .7) { player.air = true; player.vy = 0; player.flaps = ch.flaps || 0; } else player.y += (floor - player.y) * Math.min(1, dt * 18); }
     player.pitch += (0 - player.pitch) * Math.min(1, dt * 8); }
   else if (mode === 'float') { player.air = false; player.vy = 0; player.y += (surf + Math.sin(t * 2.1) * .025 - player.y) * Math.min(1, dt * 9); player.pitch += (0 - player.pitch) * Math.min(1, dt * 8);
     if (IN.jump) { IN.jump = false; if (!P && ch.jumpWater) { player.vy = ch.jumpWater; player.air = true; player.flaps = ch.flaps || 0; player.y = surf + .12; sfx.jump(); burst(player.x, wy, player.z, 5, 0xeaffff, .28); } }
     if (down && ch.dive && g1 < surf - 1) { player.under = true; player.y = surf - .32; player.vy = -2.5; sfx.glub(); burst(player.x, wy, player.z, 6, 0xeaffff, .3); } }
-  else { IN.jump = false; player.air = false; const top = sea ? (LV.env.ceil || 60) : surf - .28, cp = cam.pitch, look = my > .1 ? (cp > .5 ? -Math.sin(cp - .5) : cp < -.06 ? -Math.sin(cp) : 0) * sp * 1.1 : 0;
-    let tv = (up - down) * ch.diveSp * .75 + look; if (ch.sink && !up && tv >= 0 && mag < .05) tv = -ch.sink; player.vy += (tv - player.vy) * Math.min(1, dt * 5); player.y += player.vy * dt;
-    const fl = Math.max(g1, floorAt(player.x, player.z, player.y)) + .03; if (player.y < fl) { player.y = fl; if (player.vy < 0) player.vy = 0; }
-    if (player.y >= top) { player.y = top; if (player.vy > 0) player.vy = 0; if (!sea && (up || look > .6)) { player.under = false; sfx.splash(); } }
+  else { const fly = mode === 'fly', vs = fly ? ch.flySp : ch.diveSp; IN.jump = false; player.air = fly; const top = sea ? (LV.env.ceil || 60) : fly ? (LV.env.ceil || 48) : surf - .28, cp = cam.pitch, look = my > .1 ? (cp > .5 ? -Math.sin(cp - .5) : cp < -.06 ? -Math.sin(cp) : 0) * sp * 1.1 : 0;
+    /* a diver with leap can burst up through the surface: hold up while rising fast */
+    let tv = (up - down) * vs * .75 + look + fy; if (ch.sink && !fly && !up && tv >= 0 && mag < .05) tv = -ch.sink; player.vy += (tv - player.vy) * Math.min(1, dt * 5); player.y += player.vy * dt;
+    const fl = Math.max(g1, floorAt(player.x, player.z, player.y), fly && !sea ? wy + .25 : -1e9) + .03; if (player.y < fl) { player.y = fl; if (player.vy < 0) player.vy = 0; if (fly && !up) { player.flying = false; player.air = false; } }
+    if (player.y >= top) { if (!sea && !fly && ch.leap && up && player.vy > ch.diveSp * .45) { player.under = false; player.air = true; player.vy = ch.leap; player.y = surf + .15; sfx.splash(); burst(player.x, wy, player.z, 8, 0xeaffff, .34); } else { player.y = top; if (player.vy > 0) player.vy = 0; if (!sea && !fly && (up || look > .6)) { player.under = false; sfx.splash(); } } }
     player.off = player.y - fl; player.pitch += (clamp(Math.atan2(player.vy, Math.max(sp, 2.2)), -.9, .9) - player.pitch) * Math.min(1, dt * 5);
-    if (Math.random() < dt * (1.2 + mag * 3)) puff(player.x + rr(-.2, .2), player.y + .5, player.z + rr(-.2, .2), rr(-.1, .1), rr(.6, 1.3), rr(-.1, .1), 1.6, 0xcfefff, rr(.08, .16)); }
-  player.g.position.set(player.x, player.y, player.z); const c = player.c; c.g.rotation.y = player.yaw; c.g.rotation.x = -player.pitch;
-  player.sh.position.y = Math.max(g1, mode === 'land' && g1 < wy ? wy : -1e9, floorAt(player.x, player.z, player.y)) - player.y + .05; player.sh.visible = !sea && mode === 'land' && UW < .5;
-  player.moving = mag > .05; player.sp = player.moving ? sp : 0; player.actT = Math.max(0, player.actT - dt); senseCD = Math.max(0, senseCD - dt);
-  if (player.moving && mode === 'land' && !player.air) { player.stepT = (player.stepT || 0) - dt * sp; if (player.stepT <= 0) { player.stepT = 2.4; g1 < wy ? sfx.splash() : sfx.step(); } }
+    if (!fly && Math.random() < dt * (1.2 + mag * 3)) puff(player.x + rr(-.2, .2), player.y + .5, player.z + rr(-.2, .2), rr(-.1, .1), rr(.6, 1.3), rr(-.1, .1), 1.6, 0xcfefff, rr(.08, .16)); }
+  player.g.position.set(player.x, player.y, player.z); c.g.rotation.y = player.yaw; c.g.rotation.x = -player.pitch; c.g.visible = !player.burrow; player.mound.visible = !!player.burrow;
+  player.sh.position.y = Math.max(g1, mode === 'land' && g1 < wy ? wy : -1e9, floorAt(player.x, player.z, player.y)) - player.y + .05; player.sh.visible = !sea && (mode === 'land' || mode === 'fly') && UW < .5 && !player.burrow;
+  player.moving = mag > .05; player.sp = player.moving ? sp : 0; player.actT = Math.max(0, player.actT - dt); player.scoutT = Math.max(0, (player.scoutT || 0) - dt); senseCD = Math.max(0, senseCD - dt);
+  if (player.moving && mode === 'land' && !player.air) { player.stepT = (player.stepT || 0) - dt * sp; if (player.stepT <= 0) { player.stepT = 2.4; g1 < wy ? sfx.splash() : sfx.step(); if (player.burrow) puff(player.x, player.y + .2, player.z, rr(-.4, .4), .8, rr(-.4, .4), .7, LV.env.moundCol || 0xffffff, .3); }
+    if (WORLD.prints && !player.burrow && !cling) { player.printT = (player.printT || 0) - dt * sp; if (player.printT <= 0) { const e = LV.env.tracks; player.printT = e.gap || .9; if (!e.on || e.on(player.x, player.z)) { player.side = -(player.side || 1); const o = player.side * (ch.track || .16); WORLD.prints.add(player.x + Math.cos(player.yaw) * o, player.z - Math.sin(player.yaw) * o, player.yaw, ch.print || .13); } } } }
   if (player.moving && mode === 'float' && Math.random() < dt * 10) puff(player.x - Math.sin(player.yaw) * .4 + rr(-.3, .3), wy + .04, player.z - Math.cos(player.yaw) * .4 + rr(-.3, .3), rr(-.3, .3), .5, rr(-.3, .3), .7, 0xeaffff, .26);
-  const s = player.st; s.speed = player.sp + (mode === 'dive' ? Math.abs(player.vy) * .6 : 0); s.air = player.air; s.vy = player.vy; s.swim = mode === 'float'; s.dive = mode === 'dive'; s.off = player.off || 0; s.talk = speaking(MY.char) ? 1 : 0; s.act = player.actT > 0 ? 'sense' : null; s.look = 0; if (LV.animSt) LV.animSt(s);
+  s.speed = player.sp + (mode === 'dive' || mode === 'fly' ? Math.abs(player.vy) * .6 : 0) + (cling && mag > .05 ? 2 : 0); s.air = player.air; s.vy = player.vy; s.swim = mode === 'float'; s.dive = mode === 'dive'; s.fly = mode === 'fly'; s.cling = cling; s.hold = MY.hold ? 1 : 0; s.off = player.off || 0; s.talk = speaking(MY.char) ? 1 : 0; s.act = player.actT > 0 ? 'sense' : null; s.look = 0; if (LV.animSt) LV.animSt(s);
   c.anim(dt, t, s);
 }
 function updateCam(dt) {
-  if (SPEC) { const a = AV.get(specId) || AV.values().next().value; if (a) { player.x = a.x; player.z = a.z; player.y = a.y; player.mode = a.s === 2 ? 'dive' : 'land'; } }
+  if (SPEC) { const a = AV.get(specId) || AV.values().next().value; if (a) { player.x = a.x; player.z = a.z; player.y = a.y; player.mode = a.s === 2 ? 'dive' : a.s === 3 ? 'fly' : 'land'; } }
   else if (player.moving && !IN.look && performance.now() - IN.lastLook > 1300) { const dd = angDiff(player.yaw + Math.PI, cam.yaw); if (Math.abs(dd) < 2.4) cam.yaw += dd * Math.min(1, dt * 1.1); }
-  const [pa, pb] = pitchLim(); cam.pitch = clamp(cam.pitch, pa, pb); const ch = CH(), wy = waterY(), sea = !!LV.env.sea, port = innerWidth < innerHeight, d = cam.dist * (ch && ch.cam || 1) * (port ? 1.14 : 1), cp = Math.cos(cam.pitch);
+  const [pa, pb] = pitchLim(); cam.pitch = clamp(cam.pitch, pa, pb); const ch = CH(), wy = waterY(player.x, player.z), sea = !!LV.env.sea, port = innerWidth < innerHeight, sc = player.scoutT > 0 && ch.sense.scout ? ch.sense.scout : 1;
+  cam.zoom = lerp(cam.zoom || 1, sc, Math.min(1, dt * 3)); const zk = clamp((cam.zoom - 1) / 1.5, 0, 1), pit = lerp(cam.pitch, Math.max(cam.pitch, .95), zk), d = cam.dist * (ch && ch.cam || 1) * (port ? 1.14 : 1) * cam.zoom, cp = Math.cos(pit);
   cam.tgt.set(player.x, player.y + (ch && ch.eye || .9) + (port ? .7 : 0), player.z); const dive = player.mode === 'dive' && !sea; let px, py, pz;
-  for (const q of [1, .82, .66, .5, .36, .24, .14]) { px = cam.tgt.x + Math.sin(cam.yaw) * cp * d * q; pz = cam.tgt.z + Math.cos(cam.yaw) * cp * d * q; py = cam.tgt.y + Math.sin(cam.pitch) * d * q; const g = heightAt(px, pz) + .45;
-    if (dive) { py = Math.min(py, wy - .3); if (py >= g || q < .2) { py = Math.max(py, Math.min(g, wy - .3)); break; } } else { if (!sea && g < wy + .4 && wy > -1e8) py = Math.max(py, wy + .4); if (py >= g - .6 || q < .2) { py = Math.max(py, g); break; } } }
+  for (const q of [1, .82, .66, .5, .36, .24, .14]) { px = cam.tgt.x + Math.sin(cam.yaw) * cp * d * q; pz = cam.tgt.z + Math.cos(cam.yaw) * cp * d * q; py = cam.tgt.y + Math.sin(pit) * d * q; const g = heightAt(px, pz) + .45, last = q < .2; if (!last && zk < .5 && inBox(px, py, pz, .3)) continue;
+    if (dive) { py = Math.min(py, wy - .3); if (py >= g || last) { py = Math.max(py, Math.min(g, wy - .3)); break; } } else { const cw = waterY(px, pz); if (!sea && g < cw + .4 && cw > -1e8) py = Math.max(py, cw + .4); if (py >= g - .6 || last) { py = Math.max(py, g); break; } } }
   if (cam.snap) { cam.pos.set(px, py, pz); cam.snap = false; } else cam.pos.lerp(_v.set(px, py, pz), Math.min(1, dt * 9));
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt); skyMesh.position.copy(camera.position);
-  UW += ((sea || camera.position.y < wy ? 1 : 0) - UW) * Math.min(1, dt * 14);
+  UW += ((sea || camera.position.y < waterY(camera.position.x, camera.position.z) ? 1 : 0) - UW) * Math.min(1, dt * 14);
 }
+
+/* ---------------- things to carry, things to shove, things that watch ----------------
+   carriable({ id, at, mesh, label, skill, heavy, when, r, lift, onPick, onDrop }): one thing at a time, held overhead.
+   Where it is lives in S.c so everyone sees it: 'x,y,z' on the ground, '@playerId' in someone's grip, '-' used up.
+   holding(id), putDown(), consume(id). A receptacle is an ordinary ix with when: () => holding('thing'). */
+const CARRY = {};
+function carriable(o) { o.p0 = o.at.length === 3 ? o.at.slice() : [o.at[0], null, o.at[1]]; scene.add(o.mesh); CARRY[o.id] = o; o.pos = [o.p0[0], o.p0[1] === null ? heightAt(o.p0[0], o.p0[2]) : o.p0[1], o.p0[2]];
+  o.ix = ix({ id: 'cy_' + o.id, at: o.pos.slice(), r: o.r || 2.3, label: () => `Pick up ${T(o.label)}`, when: () => !MY.hold && carryFree(o) && (!o.when || o.when()), act: () => { if (o.skill && !canUse(o.skill)) { sfx.bad(); return toast(T(o.no) || `${nameOf(whoHas(o.skill))} could carry that. You can’t.`); } MY.hold = o.id; op({ t: 'c', k: o.id, v: '@' + Net.id }); sfx.pick(); if (o.onPick) o.onPick(o); } }); return o; }
+const carryFree = (o) => { const v = S.c[o.id]; return v !== '-' && !(v && v[0] === '@'); };
+const holding = (id) => MY.hold === id;
+const carryAt = (id) => CARRY[id].pos;
+function putDown(at) { const o = CARRY[MY.hold]; if (!o) return; const x = at ? at[0] : player.x + Math.sin(player.yaw) * .9, z = at ? at[2] : player.z + Math.cos(player.yaw) * .9, y = at ? at[1] : Math.max(floorAt(x, z, player.y + .6), player.mode === 'land' ? -1e9 : player.y); MY.hold = null; op({ t: 'c', k: o.id, v: [x.toFixed(2), y.toFixed(2), z.toFixed(2)].join() }); sfx.step(); if (o.onDrop) o.onDrop(o, x, y, z); }
+function consume(id) { if (MY.hold === id) MY.hold = null; op({ t: 'c', k: id, v: '-' }); }
+function tickCarry(dt, t) { for (const id in CARRY) { const o = CARRY[id], v = S.c[id], m = o.mesh; if (v === '-') { m.visible = false; continue; } const inHand = !!(v && v[0] === '@'); m.visible = inHand || !o.when || !!o.when();
+  if (inHand) { const pid = v.slice(1), me = pid === Net.id && !SPEC, a = me ? null : AV.get(pid); if (me && MY.hold !== id) MY.hold = id; if (me || (a && a.seen)) { const q = me ? player : a, h = (me ? player.c.h : a.c.h) + (o.lift || .2); o.pos[0] = q.x; o.pos[1] = q.y + h + Math.sin(t * 6) * .03; o.pos[2] = q.z; o.lostT = 0; }
+    else { o.lostT = (o.lostT || 0) + dt; if (o.lostT > 4 && (!Net.on || Net.isHost)) { o.lostT = 0; op({ t: 'c', k: id, v: [o.pos[0].toFixed(2), heightAt(o.pos[0], o.pos[2]).toFixed(2), o.pos[2].toFixed(2)].join() }); } } }
+  else if (v) { const q = v.split(',').map(Number); o.pos[0] = q[0]; o.pos[1] = q[1]; o.pos[2] = q[2]; }
+  m.position.set(o.pos[0], o.pos[1] + (inHand ? 0 : (o.rest || 0)), o.pos[2]); if (o.spin) m.rotation.y = t * o.spin; o.ix.p[0] = o.pos[0]; o.ix.p[1] = o.pos[1]; o.ix.p[2] = o.pos[2]; } }
+/* pushable({ id, at: [x, z], r, mesh, skill, no, ok(x, z), onMove(p, dist) }): shove it by walking into it. Its place is shared as S['px_' + id]. */
+const PUSH = [];
+function pushable(o) { o.x = o.at[0]; o.z = o.at[1]; scene.add(o.mesh); PUSH.push(o); return o; }
+function tickPush(dt, t) { for (const q of PUSH) { const v = S['px_' + q.id]; if (v && v !== q.sent && t - (q.movedT || -9) > .6) { const a = v.split(',').map(Number); q.x += (a[0] - q.x) * Math.min(1, dt * 8); q.z += (a[1] - q.z) * Math.min(1, dt * 8); if (Math.hypot(a[0] - q.x, a[1] - q.z) < .02) q.sent = v; }
+  if (q.dirty && t - q.movedT > .35) { q.dirty = false; q.sent = q.x.toFixed(2) + ',' + q.z.toFixed(2); setVal('px_' + q.id, q.sent); }
+  q.mesh.visible = q.on !== false; q.mesh.position.set(q.x, heightAt(q.x, q.z) + (q.lift === undefined ? q.r * .9 : q.lift), q.z); if (q.rolls !== false) q.mesh.rotation.x = (q.roll || 0) / q.r; } }
+/* watcher({ at() -> [x, y, z, yaw], range, fov, when, rate, dy, caught() }): something that notices you. Stand in the cone and the eye fills;
+   when it is full, caught() (or LV.onCaught) runs. Burrowed players, and anyone LV.hidden(watcher) says is hidden, are not seen. */
+const WATCH = []; let SPOT = 0;
+function watcher(o) { const g = new THREE.CircleGeometry(o.range, 22, -Math.PI / 2 - o.fov, o.fov * 2); g.rotateX(-Math.PI / 2); o.m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xfff0a8, transparent: true, opacity: .16, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false })); o.m.visible = false; o.m.renderOrder = 3; scene.add(o.m); WATCH.push(o); return o; }
+function tickWatch(dt) { let seen = null; const ch = CH();
+  for (const o of WATCH) { const on = started && (!o.when || !!o.when()); o.m.visible = on && o.cone !== false; if (!on) continue; const a = o.at(); o.m.position.set(a[0], (o.flat === undefined ? heightAt(a[0], a[2]) : o.flat) + .12, a[2]); o.m.rotation.y = a[3]; let see = false;
+    if (!SPEC && !paused() && !busy && !player.burrow && !(LV.hidden && LV.hidden(o))) { const dx = player.x - a[0], dz = player.z - a[2], d = Math.hypot(dx, dz); see = Math.abs(player.y - a[1]) < (o.dy || 6) && ((d < o.range * (ch.sneak || 1) && Math.abs(angDiff(Math.atan2(dx, dz), a[3])) < o.fov) || d < 1.1); }
+    o.m.material.color.setHex(see ? 0xff6a4a : 0xfff0a8); o.m.material.opacity = see ? .3 : .16; if (see) seen = o; }
+  SPOT = clamp(SPOT + (seen ? dt * (seen.rate || 1.5) : -dt * .8), 0, 1); const el = $('#spot'); if (el) el.classList.toggle('on', SPOT > .1);
+  if (SPOT >= 1 && seen) { SPOT = 0; sfx.caught(); if (seen.caught) seen.caught(seen); else if (LV.onCaught) LV.onCaught(seen); } }
+const clock = () => (Date.now() + Net.offset) / 1000;
 
 /* ---------------- other players ---------------- */
 const AV = new Map();
-function avatarAdd(pl) { if (AV.has(pl.id) || !pl.char || !LV.chars[pl.char]) return; const c = LV.chars[pl.char].make(), g = new THREE.Group(); g.add(c.g); const lab = nameSprite(pl.name || nameOf(pl.char)); lab.position.y = c.h + .7; g.add(lab); g.visible = false; scene.add(g);
-  AV.set(pl.id, { id: pl.id, c, g, char: pl.char, name: pl.name || nameOf(pl.char), x: 0, z: 0, y: 0, yaw: 0, p: 0, tx: 0, tz: 0, ty: 0, tw: 0, tp: 0, m: 0, a: 0, s: 0, seen: false, st: {}, actT: 0 }); syncPartners(); }
+function avatarAdd(pl) { if (AV.has(pl.id) || !pl.char || !LV.chars[pl.char]) return; const c = LV.chars[pl.char].make(), g = new THREE.Group(); g.add(c.g); const lab = nameSprite(pl.name || nameOf(pl.char)); lab.position.y = c.h + .7; g.add(lab); const mound = mesh(GEO.sph, new THREE.MeshLambertMaterial({ color: LV.env.moundCol || 0xf4f6fa, flatShading: true }), 0, .05, 0, .55, .26, .55); mound.visible = false; g.add(mound); g.visible = false; scene.add(g);
+  AV.set(pl.id, { id: pl.id, c, g, mound, char: pl.char, name: pl.name || nameOf(pl.char), x: 0, z: 0, y: 0, yaw: 0, p: 0, tx: 0, tz: 0, ty: 0, tw: 0, tp: 0, m: 0, a: 0, s: 0, seen: false, st: {}, actT: 0 }); syncPartners(); }
 function avatarDrop(id) { const a = AV.get(id); if (a) { scene.remove(a.g); AV.delete(id); } if (specId === id) specId = null; syncPartners(); }
 function avatarState(id, d) { const a = AV.get(id); if (!a) return; a.last = performance.now(); a.tx = d.x; a.tz = d.z; a.ty = d.y; a.tw = d.w; a.tp = d.p || 0; a.m = d.m; a.a = d.a; a.s = d.s || 0; if (!a.seen) { a.x = d.x; a.z = d.z; a.y = d.y; a.yaw = d.w; a.seen = true; a.g.visible = true; } }
-function tickAvatars(dt, t) { for (const a of AV.values()) { if (!a.seen) continue; if (performance.now() - a.last > 9000) { a.seen = false; a.g.visible = false; continue; } const k = Math.min(1, dt * 12); a.x += (a.tx - a.x) * k; a.z += (a.tz - a.z) * k; a.y += (a.ty - a.y) * k; a.yaw += angDiff(a.tw, a.yaw) * k; a.p += (a.tp - a.p) * k; a.g.position.set(a.x, a.y, a.z); a.c.g.rotation.y = a.yaw; a.c.g.rotation.x = -a.p; a.actT = Math.max(0, a.actT - dt);
-  const s = a.st; s.speed = a.m; s.air = !!a.a; s.vy = 0; s.swim = a.s === 1; s.dive = a.s === 2; s.act = a.actT > 0 ? 'sense' : null; s.talk = 0; s.off = 1; a.c.anim(dt, t, s); } }
+function tickAvatars(dt, t) { for (const a of AV.values()) { if (!a.seen) continue; if (performance.now() - a.last > 9000) { a.seen = false; a.g.visible = false; continue; } const k = Math.min(1, dt * 12); a.x += (a.tx - a.x) * k; a.z += (a.tz - a.z) * k; a.y += (a.ty - a.y) * k; a.yaw += angDiff(a.tw, a.yaw) * k; a.p += (a.tp - a.p) * k; a.g.position.set(a.x, a.y, a.z); a.c.g.rotation.y = a.yaw; a.c.g.rotation.x = -a.p; a.actT = Math.max(0, a.actT - dt); a.c.g.visible = a.s !== 4; a.mound.visible = a.s === 4;
+  const s = a.st; s.speed = a.m; s.air = !!a.a || a.s === 3; s.vy = 0; s.swim = a.s === 1; s.dive = a.s === 2; s.fly = a.s === 3; s.act = a.actT > 0 ? 'sense' : null; s.talk = 0; s.off = 1; a.c.anim(dt, t, s); } }
 /* skills: every character has a few; a job that needs one is done by whoever has it */
 const playerOf = (k) => { if (!Net.on) return null; for (const p of Net.players.values()) if (p.char === k && p.id !== Net.id) return p; return null; };
 const isPlayed = (k) => (k === MY.char && !SPEC) || !!playerOf(k);
@@ -534,11 +612,11 @@ const someoneHas = (sk) => { const k = whoHas(sk); return !!k && isPlayed(k); };
 function needs(sk, fn, o) { o = o || {}; if (canUse(sk)) return fn(true); const k = whoHas(sk); if (isPlayed(k)) { sfx.bad(); return toast((T(o.call) || `That needs ${nameOf(k)}.`) + ` <b>Call ${nameOf(k)} over.</b>`, 6500); } const pre = T(o.npc); if (pre && pre.length) say(pre.concat([{ do: () => fn(false) }])); else fn(false); }
 
 /* ---------------- the shared story: every change goes through op() ---------------- */
-function applyOp(o) { if (o.t === 'f') { if (S.f[o.k]) return false; S.f[o.k] = 1; } else if (o.t === 'a') { if (!S[o.l] || S[o.l].includes(o.v)) return false; S[o.l].push(o.v); } else if (o.t === 'r') { if (!S[o.l] || !S[o.l].includes(o.v)) return false; S[o.l] = S[o.l].filter(x => x !== o.v); } else if (o.t === 's') { if (S[o.k] === o.v) return false; S[o.k] = o.v; } else if (o.t === 'h') { if ((S.hold[o.k] || 0) === o.v) return false; if (o.v) S.hold[o.k] = o.v; else delete S.hold[o.k]; } else return false; return true; }
+function applyOp(o) { if (o.t === 'f') { if (S.f[o.k]) return false; S.f[o.k] = 1; } else if (o.t === 'a') { if (!S[o.l] || S[o.l].includes(o.v)) return false; S[o.l].push(o.v); } else if (o.t === 'r') { if (!S[o.l] || !S[o.l].includes(o.v)) return false; S[o.l] = S[o.l].filter(x => x !== o.v); } else if (o.t === 's') { if (S[o.k] === o.v) return false; S[o.k] = o.v; } else if (o.t === 'h') { if ((S.hold[o.k] || 0) === o.v) return false; if (o.v) S.hold[o.k] = o.v; else delete S.hold[o.k]; } else if (o.t === 'c') { if (S.c[o.k] === o.v) return false; S.c[o.k] = o.v; } else return false; return true; }
 function op(o) { if (!applyOp(o)) return; onOp(o, true); Net.sendOp(o); }
 function remoteOp(o, by) { if (!applyOp(o)) return; onOp(o, false, by); }
 function onOp(o, local, by) {
-  if (!started) return; syncWorld(); if (o.t === 'h') return;
+  if (!started) return; syncWorld(); if (o.t === 'h' || o.t === 'c') return;
   if (o.t === 's' && o.k === 'st') { setMood(LV.moodFor ? LV.moodFor() : Object.keys(LV.moods)[0]); if (LV.onStage) LV.onStage(o.v, local); }
   if (o.t === 'f' && o.k === 'done') { PREF.done = PREF.done || {}; PREF.done[LV.id] = 1; savePrefs(); setTimeout(() => toast('That’s the story. Keep exploring, or tap the <b>menu</b> (top right) to play it as someone else or try another one.', 12000), 9000); }
   if (LV.onOp) LV.onOp(o, local, by);
@@ -566,30 +644,45 @@ function faceNpc(n) { player.yaw = Math.atan2(n.g.position.x - player.x, n.g.pos
 function npcMove(n, x, z, y) { n.g.position.set(x, y === undefined ? heightAt(x, z) : y, z); if (n.col) { n.col.x = x; n.col.z = z; } if (n.ix) { n.ix.p[0] = x; n.ix.p[1] = n.g.position.y; n.ix.p[2] = z; } }
 function updateNPCs(dt, t) {
   for (const id in NPCS) { const n = NPCS[id], g = n.g; if (!g.visible) continue; const st = n.st; st.speed = 0;
-    if (n.goto) { const [tx, tz, ty] = n.goto, dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz); if (d < .25) { n.goto = null; if (n.onArrive) { const f = n.onArrive; n.onArrive = null; f(); } } else { const stp = Math.min(d, n.sp * dt), nx = g.position.x + dx / d * stp, nz = g.position.z + dz / d * stp, gy = n.o.swim ? (ty === undefined ? g.position.y : g.position.y + (ty - g.position.y) * Math.min(1, dt * 2)) : n.o.float ? Math.max(heightAt(nx, nz), waterY() - n.o.float) : heightAt(nx, nz); npcMove(n, nx, nz, gy); g.rotation.y += angDiff(Math.atan2(dx, dz), g.rotation.y) * Math.min(1, dt * 7); st.speed = n.sp; } }
+    if (n.follow) { const q = n.follow === Net.id && !SPEC ? player : AV.get(n.follow); if (q && (q === player || q.seen)) { const c = LV.chars[n.pal], dx = q.x - g.position.x, dz = q.z - g.position.z, d = Math.hypot(dx, dz), ty = n.o.swim ? q.y + .2 : undefined; n.sp = Math.max(c.speed, n.o.swim ? (c.diveSp || 0) : 0) * (d > 9 ? 1.3 : .95);
+        if (d > 36 || (n.stuck || 0) > 1.6) { n.stuck = 0; n.goto = null; npcMove(n, q.x - Math.sin(q.yaw || 0) * 1.6, q.z - Math.cos(q.yaw || 0) * 1.6, n.o.swim ? q.y : n.o.float ? Math.max(heightAt(q.x, q.z), waterY(q.x, q.z) - n.o.float) : undefined); } else if (d > 3.2) n.goto = [q.x - dx / d * 2.3, q.z - dz / d * 2.3, ty]; else if (d < 2.5) { n.goto = null; n.stuck = 0; } } }
+    if (n.goto) { const [tx, tz, ty] = n.goto, dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz); if (d < .25) { n.goto = null; if (n.onArrive) { const f = n.onArrive; n.onArrive = null; f(); } } else { const stp = Math.min(d, n.sp * dt), nx = g.position.x + dx / d * stp, nz = g.position.z + dz / d * stp, gy = n.o.swim || ty !== undefined ? (ty === undefined ? g.position.y : g.position.y + (ty - g.position.y) * Math.min(1, dt * 2)) : n.o.float ? Math.max(floorAt(nx, nz, g.position.y + .6, n.pal), waterY(nx, nz) - n.o.float) : n.pal ? floorAt(nx, nz, g.position.y + .6, n.pal) : heightAt(nx, nz); if (n.pal) { const tp = { x: nx, z: nz, y: gy }; collide(tp, .4); n.stuck = Math.hypot(tp.x - g.position.x, tp.z - g.position.z) < stp * .4 ? (n.stuck || 0) + dt : 0; npcMove(n, tp.x, tp.z, gy); } else npcMove(n, nx, nz, gy); g.rotation.y += angDiff(Math.atan2(dx, dz), g.rotation.y) * Math.min(1, dt * 7); st.speed = n.sp; } }
     else if (n.path) { n.wait = (n.wait || 0) - dt; if (n.wait <= 0) { n.pi = ((n.pi || 0) + 1) % n.path.length; n.goto = n.path[n.pi]; n.wait = n.path[n.pi][3] || rr(1.5, 4); } }
     const dx = player.x - g.position.x, dz = player.z - g.position.z, d = Math.hypot(dx, dz, (player.y - g.position.y) * .6);
-    st.look = d < 7 && n.o.turn !== false ? clamp(angDiff(Math.atan2(dx, dz), g.rotation.y), -1.1, 1.1) : 0; st.talk = speaking(n.o.voice || id.replace('pal_', '')) ? 1 : 0; st.swim = !!n.o.float; st.dive = !!n.o.swim; st.off = 1; if (n.tick) n.tick(dt, t, st, d);
+    st.look = d < 7 && n.o.turn !== false ? clamp(angDiff(Math.atan2(dx, dz), g.rotation.y), -1.1, 1.1) : 0; st.talk = speaking(n.o.voice || id.replace('pal_', '')) ? 1 : 0; st.swim = !!n.o.float && heightAt(g.position.x, g.position.z) < waterY(g.position.x, g.position.z) - n.o.float - .02; st.dive = !!n.o.swim; st.off = 1; if (n.tick) n.tick(dt, t, st, d);
     n.c.anim(dt, t, st);
     if (n.o.barks && started && !paused() && d < 10) { n.barkT -= dt; if (n.barkT <= 0) { n.barkT = rr(11, 24); bubble(T(pick(n.o.barks)), g); } }
   }
 }
 /* the leads nobody is playing tag along as themselves: they stand at home, take their station when it's needed, and do their jobs when asked */
 function syncPartners() { if (!LV || !scene || !S) return; for (const k of LV.order) { const c = LV.chars[k], played = isPlayed(k); let n = NPCS['pal_' + k]; const h = typeof c.home === 'function' ? c.home() : c.home;
-  if (!n) { n = npc('pal_' + k, c.make(), h[0], h[1], h[2] || 0, { y: h[3], talk: () => LV.palTalk ? LV.palTalk(k) : [L(k, '...')], barks: c.barks, voice: k, swim: h[3] !== undefined && !c.floatHome, float: c.floatHome ? c.draft : 0, r: .45 }); n.sp = c.speed * .8; n.pal = k; }
-  n.off = played; n.g.visible = !played; if (n.col) n.col.on = !played;
-  if (!played) { let to = h; for (const id in STN) { const s = STN[id]; if (s.skill && c.skills.includes(s.skill) && stationOn(s)) to = [s.p[0], s.p[2], h[2], s.p[1] !== null && (c.dive || LV.env.sea) ? s.p[1] : h[3]]; } if (!n.home || n.home[0] !== to[0] || n.home[1] !== to[1]) { n.home = to; if (started && Math.hypot(n.g.position.x - to[0], n.g.position.z - to[1]) < 90) n.goto = [to[0], to[1], to[3]]; else npcMove(n, to[0], to[1], to[3] !== undefined ? to[3] : c.floatHome ? Math.max(heightAt(to[0], to[1]), waterY() - c.draft) : undefined); } } } }
+  if (!n) { const sw = h[3] !== undefined && !c.floatHome; n = npc('pal_' + k, c.make(), h[0], h[1], h[2] || 0, { y: h[3], talk: () => palScript(k), barks: c.barks, voice: k, swim: sw, float: sw ? 0 : (c.draft || 0), r: .45 }); n.sp = c.speed * .8; n.pal = k; }
+  n.off = played; n.g.visible = !played; if (n.col) n.col.on = !played; n.follow = null;
+  if (!played) { let to = h, free = true; const cmd = S['pal_' + k] || '';
+    if (cmd[0] === 's') { const q = cmd.slice(2).split(',').map(Number); to = [q[0], q[2], h[2], n.o.swim ? q[1] : undefined]; free = false; }
+    for (const id in STN) { const s = STN[id]; if (!s.manual && s.skill && c.skills.includes(s.skill) && stationOn(s)) { to = [s.p[0], s.p[2], h[2], s.p[1] !== null && (c.dive || LV.env.sea) ? s.p[1] : h[3]]; free = false; } }
+    if (cmd[0] === 'f' && free) { n.follow = cmd.slice(2); n.home = null; continue; }
+    if (!n.home || n.home[0] !== to[0] || n.home[1] !== to[1]) { n.home = to; if (started && Math.hypot(n.g.position.x - to[0], n.g.position.z - to[1]) < 90) n.goto = [to[0], to[1], to[3]]; else npcMove(n, to[0], to[1], to[3] !== undefined ? to[3] : n.o.float ? Math.max(heightAt(to[0], to[1]), waterY(to[0], to[1]) - n.o.float) : undefined); } } } }
+/* tag-alongs take orders. S['pal_' + k] is 'f@playerId' (follow that player), 's@x,y,z' (wait there) or unset (go home). */
+function palScript(k) { const base = (LV.palTalk ? LV.palTalk(k) : [L(k, '...')]).slice(); if (LV.noOrders) return base; const c = LV.chars[k], cmd = S['pal_' + k] || '', n = NPCS['pal_' + k], g = n.g.position, opts = [];
+  if (cmd[0] !== 'f') opts.push({ t: 'Come with me.', r: [L(k, c.sayFollow || 'Lead on.'), { do: () => setVal('pal_' + k, 'f@' + Net.id) }] });
+  else opts.push({ t: 'Wait here.', r: [L(k, c.sayStay || 'Here. Fine.'), { do: () => setVal('pal_' + k, 's@' + [g.x.toFixed(1), g.y.toFixed(1), g.z.toFixed(1)].join()) }] });
+  if (cmd) opts.push({ t: 'Head back. I’ll shout.', r: [L(k, c.sayHome || 'You know where I’ll be.'), { do: () => setVal('pal_' + k, '') }] });
+  opts.push({ t: 'That’s all.' }); return base.concat([{ c: opts }]); }
+const palAt = (k) => { const n = NPCS['pal_' + k]; return n && n.g.visible ? n.g.position : null; };
 
 /* ---------------- things to do: ix({ id, at: [x,z] | [x,y,z], r, label, when, act, sense, found, dy, show }) ---------------- */
 const IX = []; let curIX = null;
 function ix(o) { o.p = o.at.length === 3 ? o.at.slice() : [o.at[0], null, o.at[1]]; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: o.col || 0xffd27a, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false })); s.scale.setScalar(.5); s.visible = false; s.renderOrder = 4; scene.add(s); o.sp = s; IX.push(o); return o; }
-const ixY = (o) => o.p[1] === null ? Math.max(heightAt(o.p[0], o.p[2]), o.float ? waterY() : -1e9) : o.p[1];
+const ixY = (o) => o.p[1] === null ? Math.max(heightAt(o.p[0], o.p[2]), o.float ? waterY(o.p[0], o.p[2]) : -1e9) : o.p[1];
 const ixLive = (o) => (!o.when || o.when()) && (!o.sense || flag('rv_' + o.id));
+const PUT = { label: () => `Put down ${T(CARRY[MY.hold].label)}`, act: () => putDown() };
 function tickIX(dt, t) { let best = null, bd = 1e9; const ok = started && !SPEC;
-  for (const o of IX) { const live = ok && ixLive(o), y = ixY(o), d = Math.hypot(o.p[0] - player.x, o.p[2] - player.z, (y - player.y) * .7); o.sp.visible = live && d < 46 && !o.quiet; if (o.sp.visible) { o.sp.position.set(o.p[0], y + (o.dy || 1.1) + Math.sin(t * 2.4 + o.p[0]) * .1, o.p[2]); o.sp.material.opacity = d < (o.r || 2.6) ? 1 : .55; o.sp.scale.setScalar(d < (o.r || 2.6) ? .62 : .4); } if (live && d < (o.r || 2.6) && d < bd) { bd = d; best = o; } }
-  if (paused()) best = null; if (best !== curIX) { curIX = best; const b = $('#btnAct'); if (best) { b.textContent = T(best.label) || 'Look'; b.classList.remove('hide'); } else b.classList.add('hide'); } }
+  for (const o of IX) { const live = ok && ixLive(o) && (!player.burrow || !!o.under) && player.mode !== 'ride', y = ixY(o), d = Math.hypot(o.p[0] - player.x, o.p[2] - player.z, (y - player.y) * .7); o.sp.visible = live && d < 46 && !o.quiet; if (o.sp.visible) { o.sp.position.set(o.p[0], y + (o.dy || 1.1) + Math.sin(t * 2.4 + o.p[0]) * .1, o.p[2]); o.sp.material.opacity = d < (o.r || 2.6) ? 1 : .55; o.sp.scale.setScalar(d < (o.r || 2.6) ? .62 : .4); } if (live && d < (o.r || 2.6) && d < bd) { bd = d; best = o; } }
+  if (paused()) best = null; else if (!best && ok && MY.hold && CARRY[MY.hold] && player.mode !== 'ride' && !player.burrow) best = PUT;
+  if (best !== curIX) { curIX = best; const b = $('#btnAct'); if (best) { b.textContent = T(best.label) || 'Look'; b.classList.remove('hide'); } else b.classList.add('hide'); } }
 function doAct() { if (!started || paused() || SPEC || !curIX) return; const o = curIX; if (ixLive(o)) o.act(o); }
-function doSense() { if (!started || paused() || SPEC || senseCD > 0) return; const ch = CH(), se = ch.sense; senseCD = 1.4; player.actT = 1; ringAt(player.x, player.y + .2, player.z, se.col || 0xffe2a0); (sfx[se.sfx] || sfx.sniff)(); Net.send({ t: 'e', k: 1 });
+function doSense() { if (!started || paused() || SPEC || senseCD > 0) return; const ch = CH(), se = ch.sense; senseCD = 1.4; player.actT = 1; if (se.scout) player.scoutT = se.scoutT || 6; ringAt(player.x, player.y + .2, player.z, se.col || 0xffe2a0); (sfx[se.sfx] || sfx.sniff)(); Net.send({ t: 'e', k: 1 });
   if (LV.onSense && LV.onSense(se.k) === true) return; let best = null, bd = 1e9;
   for (const o of IX) if (o.sense === se.k && !flag('rv_' + o.id) && (!o.when || o.when())) { const d = Math.hypot(o.p[0] - player.x, o.p[2] - player.z, ixY(o) - player.y); if (d < bd) { bd = d; best = o; } }
   if (!best) { if (se.none && Math.random() < .7) bubble(T(pick(se.none)), player.g); return; }
@@ -601,8 +694,10 @@ function doSense() { if (!started || paused() || SPEC || senseCD > 0) return; co
 const STN = {};
 function station(o) { o.p = o.at.length === 3 ? o.at.slice() : [o.at[0], null, o.at[1]]; const m = new THREE.Mesh(new THREE.TorusGeometry(o.r || 1.6, .07, 6, 40), new THREE.MeshBasicMaterial({ color: 0xffb14a, transparent: true, opacity: .8, depthWrite: false, fog: false })); m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); o.ring = m; const lab = nameSprite(o.label || nameOf(whoHas(o.skill)), 'rgba(139,58,18,.85)'); lab.visible = false; scene.add(lab); o.lab = lab; STN[o.id] = o; return o; }
 const stationOn = (s) => !!S && (!s.when || !!s.when());
-const stnY = (s) => s.p[1] === null ? Math.max(heightAt(s.p[0], s.p[2]), s.float ? waterY() : -1e9) : s.p[1];
-const held = (id) => { const s = STN[id]; return stationOn(s) && (!!S.hold[id] || !someoneHas(s.skill)); };
+const stnY = (s) => s.p[1] === null ? Math.max(heightAt(s.p[0], s.p[2]), s.float ? waterY(s.p[0], s.p[2]) : -1e9) : s.p[1];
+const palNear = (k, x, z, r) => { const n = NPCS['pal_' + k]; return !!n && n.g.visible && Math.hypot(n.g.position.x - x, n.g.position.z - z) < r; };
+/* a station nobody can play is held by the tag-along; a manual one only once you have posted them on it */
+const held = (id) => { const s = STN[id]; if (!stationOn(s)) return false; if (S.hold[id]) return true; if (someoneHas(s.skill)) return false; return !s.manual || palNear(whoHas(s.skill), s.p[0], s.p[2], (s.r || 1.6) + 1); };
 function tickStations(dt, t) { for (const id in STN) { const s = STN[id], on = started && stationOn(s), y = stnY(s); s.ring.visible = s.lab.visible = on; if (!on) { if (s.mine) { s.mine = false; op({ t: 'h', k: id, v: 0 }); } continue; }
   const h = held(id); s.ring.position.set(s.p[0], y + .12, s.p[2]); s.ring.material.color.setHex(h ? 0x9dff8a : 0xffb14a); s.ring.material.opacity = h ? .9 : .5 + Math.sin(t * 4) * .3; s.ring.scale.setScalar(1 + (h ? 0 : Math.sin(t * 4) * .04)); s.lab.position.set(s.p[0], y + 2.3, s.p[2]);
   const mine = canUse(s.skill) && Math.hypot(player.x - s.p[0], player.z - s.p[2]) < (s.r || 1.6) && Math.abs(player.y - y) < (s.dy || 1.6); if (mine !== !!s.mine) { s.mine = mine; op({ t: 'h', k: id, v: mine ? Net.id : 0 }); if (mine) sfx.chime(Object.keys(STN).indexOf(id)); } } }
@@ -612,7 +707,7 @@ let hudT = 0;
 function tickHUD(dt, t) { hudT -= dt; if (hudT > 0) return; hudT = .2; const o = LV.objective() || {}; $('#objCh').textContent = `${LV.title} · ${T(CH().name)}`; $('#objLine').textContent = T(o.t) || ''; const a = $('#objArrow svg');
   if (o.at) { const dx = o.at[0] - player.x, dz = o.at[1] - player.z, d = Math.hypot(dx, dz), ang = Math.atan2(dx, -dz) + cam.yaw; a.style.opacity = 1; a.style.transform = `rotate(${ang}rad)`; const dy = o.at[2] !== undefined ? o.at[2] - player.y : 0; $('#objDist').textContent = d < 3 ? (Math.abs(dy) > 2.5 ? (dy < 0 ? 'right below you' : 'right above you') : 'right here') : `${Math.round(d)} hops ${dirName(dx, dz)}${dy < -3 ? ', down' : dy > 3 ? ', up' : ''}`; } else { a.style.opacity = .25; $('#objDist').textContent = ''; }
   const wy = waterY(), near = LV.env.sea ? 0 : clamp(1 - Math.abs(heightAt(player.x, player.z) - wy) / 3, 0, 1); audioScene(near, LV.hum ? LV.hum() : 0);
-  $('#btnDown').classList.toggle('hide', !(CH().dive && (LV.env.sea || player.mode !== 'land')));
+  { const ch = CH(); $('#btnDown').classList.toggle('hide', !((ch.dive && (LV.env.sea || player.mode === 'float' || player.mode === 'dive')) || (ch.fly && player.flying) || (ch.burrow && !player.burrow && player.mode === 'land'))); }
 }
 
 /* ---------------- saving: one autosave per level, on this device ---------------- */
@@ -623,7 +718,7 @@ function saveGame() { if (!started || SPEC || !S) return; if (Net.on && !Net.isH
 /* ---------------- boot ---------------- */
 function goFull() { try { const el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen; if (f && !document.fullscreenElement && !document.webkitFullscreenElement && matchMedia('(pointer: coarse)').matches) { const p = f.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { }); } } catch (e) { } }
 function beginGame(o) { /* o: { S, char, x, y, z, spec, isNew } */
-  goFull(); audioUnlock(); S = o.S; R = LV.rand ? LV.rand(S.seed) : {}; SPEC = !!o.spec; MY.char = o.char || MY.char; for (const id in STN) STN[id].mine = false;
+  goFull(); audioUnlock(); S = o.S; S.c = S.c || {}; MY.hold = null; for (const k in S.c) if (S.c[k] === '@' + Net.id) MY.hold = k; R = LV.rand ? LV.rand(S.seed) : {}; SPEC = !!o.spec; MY.char = o.char || MY.char; for (const id in STN) STN[id].mine = false;
   $('#title').classList.add('hide'); closeSheet(true); makePlayer(MY.char); const sp = LV.env.spawn(Net.on ? Net.index() : 0); if (o.x === undefined) placePlayer(sp[0], sp[1], sp[2]); else placePlayer(o.x, o.z, o.y); cam.yaw = LV.env.camYaw || .5; cam.pitch = .24; setMood(LV.moodFor ? LV.moodFor() : Object.keys(LV.moods)[0], true); started = true; startT = performance.now() / 1000; syncWorld();
   document.body.classList.toggle('spec', SPEC); const se = CH().sense; $('#btnSniff').innerHTML = se.icon || SENSE_ICON; $('#btnSniff').setAttribute('aria-label', se.name);
   netChip(); if (o.isNew && !SPEC) showCards(LV.cards.intro, () => { toast(`You are <b>${CH().name}</b>, ${CH().role.toLowerCase()}. Tap the round button to <b>${se.name.toLowerCase()}</b>.`, 8000); if (CH().tip) toast(CH().tip, 9000); if (LV.onBegin) LV.onBegin(); }); else { $('#hud').classList.remove('hide'); } saveGame(); }
@@ -631,14 +726,14 @@ function resetToTitle() { saveGame(); Net.close(); location.href = location.path
 const SENSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M5 12a7 7 0 0114 0M2 12a10 10 0 0120 0"/></svg>';
 let lastT = 0, perfT = 0, perfN = 0, saveT = 0, slowN = 0, startT = 0, sendT = 0;
 function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now - lastT) / 1000 || .016), t = now / 1000; lastT = now;
-  if (started) { updatePlayer(dt, t); tickAvatars(dt, t); tickIX(dt, t); tickStations(dt, t); tickHUD(dt, t); if (LV.tick) LV.tick(dt, t); saveT += dt; if (saveT > 12 && !paused()) { saveT = 0; saveGame(); }
-    sendT += dt; if (sendT > .1 && Net.on && !SPEC) { sendT = 0; Net.send({ t: 'p', x: +player.x.toFixed(2), z: +player.z.toFixed(2), y: +player.y.toFixed(2), w: +player.yaw.toFixed(2), p: +player.pitch.toFixed(2), m: +player.st.speed.toFixed(1), a: player.air ? 1 : 0, s: player.mode === 'float' ? 1 : player.mode === 'dive' ? 2 : 0 }); }
+  if (started) { updatePlayer(dt, t); tickAvatars(dt, t); tickIX(dt, t); tickStations(dt, t); tickCarry(dt, t); tickPush(dt, t); tickWatch(dt); tickHUD(dt, t); if (LV.tick) LV.tick(dt, t); saveT += dt; if (saveT > 12 && !paused()) { saveT = 0; saveGame(); }
+    sendT += dt; if (sendT > .1 && Net.on && !SPEC) { sendT = 0; Net.send({ t: 'p', x: +player.x.toFixed(2), z: +player.z.toFixed(2), y: +player.y.toFixed(2), w: +player.yaw.toFixed(2), p: +player.pitch.toFixed(2), m: +player.st.speed.toFixed(1), a: player.air ? 1 : 0, s: player.burrow ? 4 : player.mode === 'float' ? 1 : player.mode === 'dive' ? 2 : player.mode === 'fly' ? 3 : 0 }); }
     perfT += dt; perfN++; if (perfT > 3) { const ms = perfT / perfN * 1000; perfT = perfN = 0; slowN = ms > 36 && t - startT > 8 && !paused() ? slowN + 1 : 0; if (slowN >= 2 && !window.__NOADAPT) { slowN = 0; if (QUAL > .55) { QUAL -= .15; if (QUAL < .8) { renderer.shadowMap.enabled = false; sun.castShadow = false; } resize(); } } } }
   else { cam.yaw += dt * .05; const c = player.c; player.g.position.set(player.x, player.y, player.z); c.g.rotation.y = cam.yaw + .45; c.anim(dt, t, { speed: 0, swim: player.mode === 'float', dive: player.mode === 'dive', off: 1 }); }
   updateNPCs(dt, t); updateCam(dt); tickMood(dt); applyEnv(dt, t); for (const f of WORLD.anim) f(dt, t); tickFx(dt, t); dlgTick(dt); tickBubble(dt); renderFrame(); }
 function boot() {
   for (const k of LV.order) WHO[k] = { name: LV.chars[k].name, pitch: LV.chars[k].pitch }; Object.assign(WHO, LV.who || {}); document.title = `${LV.title} · Understory`;
-  S = freshState(7); R = LV.rand ? LV.rand(S.seed) : {}; MY.char = LV.order[0]; initRenderer(); initFx(); LV.build(); setMood(Object.keys(LV.moods)[0], true); makePlayer(MY.char); const sp = LV.env.spawn(0); placePlayer(sp[0], sp[1], sp[2]); player.mode = LV.env.sea ? 'dive' : 'land'; cam.yaw = (LV.env.camYaw || .5) - .5; started = true; syncWorld(); started = false; initInput(); initTitle();
+  S = freshState(7); R = LV.rand ? LV.rand(S.seed) : {}; MY.char = LV.order[0]; initRenderer(); initFx(); LV.build(); if (LV.env.tracks) WORLD.prints = tracks(LV.env.tracks.n || 260, LV.env.tracks.col || 0x7f93b4, LV.env.tracks.op); setMood(Object.keys(LV.moods)[0], true); makePlayer(MY.char); const sp = LV.env.spawn(0); placePlayer(sp[0], sp[1], sp[2]); player.mode = LV.env.sea ? 'dive' : 'land'; cam.yaw = (LV.env.camYaw || .5) - .5; started = true; syncWorld(); started = false; initInput(); initTitle();
   addEventListener('visibilitychange', () => { if (document.hidden && started) saveGame(); }); window.ready = 1; requestAnimationFrame(loop);
   const j = QS.get('join'); if (j) openTogether(j);
 }
@@ -672,7 +767,7 @@ function senseFx(id) { const a = AV.get(id); if (a && a.seen) { a.actT = 1; ring
 const NET_ERR = { 'peer-unavailable': 'No game with that code is open right now. Check the code, and that the host’s game is still on screen.', 'unavailable-id': 'That room code is in use. Try hosting again for a new one.', taken: 'That character is already taken in this game.', full: 'That game already has three players. You can still watch.', version: 'That room is playing a different story (or a different version). Check which one the host opened.', timeout: 'Couldn’t reach that room in time.', noserver: 'Couldn’t reach the game server. Check this device’s internet connection and try again.', busy: 'The game server is busy right now. Try again in a minute.', lost: 'Lost the connection to the game server. Other players can’t see you right now.' };
 const netErrText = (e) => NET_ERR[e] || 'Couldn’t connect. Playing together needs the web copy of the game and a working internet connection.';
 function dropPlayer(cid, why) { const p = Net.players.get(cid); if (!p) return; Net.players.delete(cid); avatarDrop(cid); Net.tr.broadcast({ t: 'leave', id: cid }); for (const k in S.hold) if (S.hold[k] === cid) op({ t: 'h', k, v: 0 }); toast(`<b>${esc(p.name)}</b> left.`); netChip(); }
-function netHost(code, cb) { Net.close(); Net.on = true; Net.isHost = true; Net.code = code; Net.id = 'host'; Net.players = new Map([['host', { id: 'host', name: myName(), char: MY.char }]]);
+function netHost(code, cb) { Net.close(); Net.on = true; Net.isHost = true; Net.code = code; for (const k in S.c) if (S.c[k] === '@' + Net.id) S.c[k] = '@host'; Net.id = 'host'; Net.players = new Map([['host', { id: 'host', name: myName(), char: MY.char }]]);
   Net.tr = hostTransport(code, { onReady() { netChip(); cb && cb(null); cb = null; }, onError(e) { if (cb) { const f = cb; cb = null; Net.close(); f(e); } else if (e !== 'peer-unavailable') toast(NET_ERR[e] ? netErrText(e) : 'Connection trouble: ' + e, 9000); }, onMsg: hostMsg, onClose(cid) { dropPlayer(cid); } }); netChip(); syncPartners(); }
 function hostMsg(cid, m) { if (!m || !started) return;
   if (m.t === 'bye') return dropPlayer(cid);
