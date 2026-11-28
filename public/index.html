@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Understory">
+<meta name="theme-color" content="#131c17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>Understory</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&amp;family=Figtree:wght@400;600;700&amp;display=swap" rel="stylesheet">
 <style>
@@ -18,7 +25,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);overflow:hidden;
   overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-#app{position:fixed;inset:0;overflow:hidden;touch-action:none;background:var(--ink)}
+#app{position:fixed;left:0;top:0;width:100%;height:100vh;height:100dvh;overflow:hidden;touch-action:none;background:var(--ink)}
 #gl{position:absolute;inset:0;width:100%;height:100%;display:block}
 #grain{position:absolute;inset:0;pointer-events:none;mix-blend-mode:soft-light;opacity:.5;background-size:cover,160px 160px}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer;touch-action:manipulation}
@@ -1870,8 +1877,9 @@ function saveGame() { if (!started || SPEC || !MY.slot) return; if (Net.on && !N
 
 /* ---------------- boot ---------------- */
 const SENSE_ICON = { nose: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 13c-2.5 0-4 1.5-4 3.5S9.800 20 12 20s4-1.500 4-3.500S14.500 13 12 13z" fill="currentColor"/><path d="M6 9c0-2 1-4 2-5M12 8c0-2 .5-4 1-5M18 9c0-2-.5-3.500-1.500-5"/></svg>', ears: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21L7 5l5 7 5-7 2 16z" fill="currentColor" fill-opacity=".25"/><path d="M2 9c1-2 2-3 3-4M22 9c-1-2-2-3-3-4"/></svg>', paws: '<svg viewBox="0 0 24 24" fill="currentColor"><ellipse cx="12" cy="16" rx="5" ry="4"/><circle cx="5.500" cy="10" r="2"/><circle cx="9.500" cy="6.500" r="2"/><circle cx="14.500" cy="6.500" r="2"/><circle cx="18.500" cy="10" r="2"/></svg>' };
+function goFull() { try { const el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen; if (f && !document.fullscreenElement && !document.webkitFullscreenElement && matchMedia('(pointer: coarse)').matches) { const p = f.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { }); } } catch (e) { } }
 function beginGame(o) { /* o: { S, char, x, z, spec, isNew } */
-  audioUnlock(); S = o.S; R = rollRand(S.seed); SPEC = !!o.spec; MY.char = o.char || MY.char; MY.stealthTold = MY.cooler = MY.bin = 0; if (o.hat !== undefined) MY.hat = !!o.hat; MY.treats = o.treats || 0;
+  goFull(); audioUnlock(); S = o.S; R = rollRand(S.seed); SPEC = !!o.spec; MY.char = o.char || MY.char; MY.stealthTold = MY.cooler = MY.bin = 0; if (o.hat !== undefined) MY.hat = !!o.hat; MY.treats = o.treats || 0;
   $('#title').classList.add('hide'); closeSheet(true); makePlayer(MY.char); player.x = o.x === undefined ? 2 : o.x; player.z = o.z === undefined ? 6 : o.z; player.y = heightAt(player.x, player.z); cam.snap = true; cam.yaw = .5; setMood(moodFor(), true); finaleOn = false; started = true; startT = performance.now() / 1000; syncWorld();
   document.body.classList.toggle('spec', SPEC); const sk = mySkill(); if (sk) { $('#btnSniff').innerHTML = SENSE_ICON[sk]; $('#btnSniff').setAttribute('aria-label', SENSE[sk].name); }
   netChip(); if (o.isNew && !SPEC) showCards([CH_CARDS[1]], () => { toast(`You are <b>${NAMES[MY.char]}</b>. Your gift is your <b>${{ nose: 'nose', ears: 'ears', paws: 'paws' }[sk]}</b>: tap the round button to ${SENSE[sk].name.toLowerCase()}.`, 8000); }); else $('#hud').classList.remove('hide'); saveGame(); }

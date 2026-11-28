@@ -10,8 +10,11 @@ Live at https://unrivaled-speculoos-314f1b.netlify.app (Netlify project `unrival
   picks the level; only that level's script is loaded.
   - `public/stories/engine.js` — renderer (shadows, bloom/grade pass, caustics, depth-aware water), movement
     (land / float / dive), dialogue, journal, NPCs, tag-along partners, stations, saves, netcode.
-  - `public/stories/pond.js`, `rig.js`, `links.js` — one level each: terrain, props, cast, story, puzzles.
-    A level is one `U.level({...})` call; pond.js is the reference for the shape.
+  - `public/stories/pond.js`, `rig.js`, `links.js`, `city.js`, `peak.js`, `dam.js` — one level each: terrain,
+    props, cast, story, puzzles. A level is one `U.level({...})` call; pond.js is the reference for the shape.
+    `lab.js` is not a story: it is a test yard for engine features (`?lv=lab`, not listed on the title screen).
+  - `tools/LEVELS.md` — the level-building reference: every engine call a level can make. Read it before
+    writing or changing a level.
   - `public/stories/critters.js` — the character kit (`Critter.*`): smooth, big-eyed, springy rigs.
     Loaded by BOTH pages; index.html's cast is built from it too. Keep it dependency-free (THREE only).
   - `public/stories/ui.css` — a copy of index.html's inline CSS, shared look for stories.html.
@@ -46,3 +49,9 @@ Opening index.html as a file uses the production relay.
 Headless Chromium works with `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`. It renders
 a few frames a second, so scripted playthroughs should call `LV.tick` / `updateNPCs` directly to pass time
 rather than waiting. stories.html sets `window.ready` once a level has booted.
+Serve `public/` on port 8123 first (`cd public && python3 -m http.server 8123`), then:
+- `node tools/lab-test.cjs` — engine feature checks; run after any change to engine.js.
+- `node tools/story.cjs <lv> <char> tools/steps/<lv>.cjs` — scripted playthrough of a level as one character;
+  every level should finish (`flag('done')`, errors=0) as each of its three characters.
+- `node tools/shot.cjs <url> <out.png> "<js>"` — a screenshot after running some JS in the page.
+(`tools/` scripts are `.cjs` because package.json is `"type": "module"`.)
